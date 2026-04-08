@@ -23,7 +23,7 @@ echo "Channel: main"
 
 ### 2. Container uptime
 
-Read `container_started` from `/workspace/group/session-state.json`. Compute age:
+Read `container_started` from `/workspace/group/session-state.json` and compute age:
 
 ```python
 import json, datetime
@@ -31,9 +31,7 @@ state = json.load(open('/workspace/group/session-state.json'))
 started = state.get('container_started')
 if started:
     age = datetime.datetime.utcnow() - datetime.datetime.fromisoformat(started.replace('Z',''))
-    days = age.days
-    hours = age.seconds // 3600
-    print(f"{days}d {hours}h (since {started})")
+    print(f"{age.days}d {age.seconds // 3600}h (since {started})")
 else:
     print("unknown")
 ```
@@ -53,34 +51,22 @@ ls /workspace/ipc/ 2>/dev/null
 
 ### 4. Tool availability and container utilities
 
-Check each tool family and report **available** or **unavailable**:
-
 ```bash
-# Core — file system and shell tools
-echo "Read/Write/Bash: available"
-
-# Web — browser and fetch tools
 which agent-browser 2>/dev/null && echo "Web (agent-browser): available" || echo "Web (agent-browser): unavailable"
-
-# Orchestration — sub-agent / task tools
 ls /workspace/ipc/ 2>/dev/null && echo "Orchestration (IPC): available" || echo "Orchestration (IPC): unavailable"
-
-# Container utilities
 node --version 2>/dev/null
 claude --version 2>/dev/null
 ```
 
-Then call `mcp__nanoclaw__list_tasks` — if it returns without error, report **MCP: available** and use the result for the task snapshot (step 5); if it errors, report **MCP: unavailable**.
+Then call `mcp__nanoclaw__list_tasks` — if it succeeds, report **MCP: available** and use the result for step 5; if it errors, report **MCP: unavailable**.
 
 ### 5. Task snapshot
 
-Use the result from the `mcp__nanoclaw__list_tasks` call above.
-
-If no tasks exist, report "No scheduled tasks."
+Use the result from `mcp__nanoclaw__list_tasks`. If no tasks exist, report "No scheduled tasks."
 
 ## Report format
 
-Present as a clean, readable message using Telegram HTML:
+Present using Telegram HTML, adapting each section to what you actually found:
 
 ```
 🔍 <b>NanoClaw Status</b>
@@ -108,6 +94,6 @@ Present as a clean, readable message using Telegram HTML:
 • N active tasks / No scheduled tasks
 ```
 
-Adapt based on what you actually find. Keep it concise — this is a quick health check, not a deep diagnostic.
+Keep it concise — this is a quick health check, not a deep diagnostic.
 
 **See also:** `/capabilities` for a full list of installed skills and tools.

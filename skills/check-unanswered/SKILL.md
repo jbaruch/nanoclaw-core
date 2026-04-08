@@ -1,6 +1,6 @@
 ---
 name: check-unanswered
-description: Finds user messages that never got a threaded bot reply. A message is "answered" only if a bot message exists with reply_to_message_id pointing to it. Deterministic script. Use in context recovery or heartbeat checks.
+description: Finds user messages that never got a threaded bot reply. A message is "answered" only if a bot message exists with reply_to_message_id pointing to it. Deterministic script. Use when checking for missed messages, unresponded messages, dropped replies, or messages without responses — such as during context recovery or heartbeat checks.
 ---
 
 # Check Unanswered Messages

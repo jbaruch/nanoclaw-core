@@ -12,3 +12,7 @@ python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswer
 Outputs JSON with `unanswered` array. Empty = nothing to report.
 
 A bot message "answers" a user message only when `reply_to_message_id = user_msg.id`. Standalone bot messages are not answers.
+
+## Requirements
+
+The `NANOCLAW_CHAT_JID` environment variable must be set. The script returns an error (not crash) if missing.

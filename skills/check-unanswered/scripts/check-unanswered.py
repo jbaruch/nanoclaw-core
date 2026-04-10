@@ -20,20 +20,18 @@ CHAT_JID = os.environ.get('NANOCLAW_CHAT_JID', '')
 LOOKBACK_HOURS = int(os.environ.get('LOOKBACK_HOURS', '24'))
 
 if not CHAT_JID:
-    try:
-        conn = sqlite3.connect(DB, timeout=5)
-        row = conn.execute(
-            "SELECT chat_jid FROM messages WHERE is_from_me=1 ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
-        if row:
-            CHAT_JID = row[0]
-        else:
-            print(json.dumps({"unanswered": [], "error": "no bot messages found"}))
-            sys.exit(0)
-    except Exception as e:
-        print(json.dumps({"unanswered": [], "error": str(e)}))
-        sys.exit(0)
+    # NANOCLAW_CHAT_JID must be set. Without it, the script cannot
+    # determine which group to check. The previous fallback (most
+    # recent bot message) was removed because it could select the
+    # wrong group when the DB contains messages from multiple chats.
+    print(json.dumps({
+        "unanswered": [],
+        "chat_jid": "",
+        "error": "NANOCLAW_CHAT_JID not set — required env var.",
+        "lookback_hours": LOOKBACK_HOURS,
+        "checked_at": datetime.now(timezone.utc).isoformat()
+    }))
+    sys.exit(0)
 
 try:
     conn = sqlite3.connect(DB, timeout=5)

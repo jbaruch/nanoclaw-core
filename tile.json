@@ -36,6 +36,9 @@
     },
     "query-size-limits": {
       "rules": "rules/query-size-limits.md"
+    },
+    "progress-updates": {
+      "rules": "rules/progress-updates.md"
     }
   },
   "skills": {

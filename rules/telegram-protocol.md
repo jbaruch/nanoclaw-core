@@ -28,12 +28,12 @@ Rule of thumb: if the user said something and you're answering → `reply_to`. I
 
 React → work → deliver result. Do NOT hold the user hostage with a reply that says "I'm starting now". The reaction IS the acknowledgement.
 
-## Formatting
+## Formatting — HTML ONLY, NEVER Markdown
 
-Messages are parsed as HTML. Use these tags:
+**CRITICAL: Telegram parses HTML, not Markdown. Markdown syntax renders as literal text — `**bold**` shows as `**bold**`, `[link](url)` shows as `[link](url)`. This applies to ALL messages including those from background agents and scheduled tasks.**
 
-| Format | Syntax |
-|--------|--------|
+| Format | HTML syntax |
+|--------|------------|
 | Bold | `<b>text</b>` |
 | Italic | `<i>text</i>` |
 | Underline | `<u>text</u>` |
@@ -45,7 +45,12 @@ Messages are parsed as HTML. Use these tags:
 | Quote | `<blockquote>text</blockquote>` |
 | Spoiler | `<tg-spoiler>text</tg-spoiler>` |
 
-**Do NOT use Markdown** (`*bold*`, `_italic_`, `**bold**`, `[link](url)`). It will render as literal text. HTML only.
+**Forbidden Markdown patterns — NEVER use these in `send_message`:**
+- `**bold**` or `__bold__` → use `<b>bold</b>`
+- `*italic*` or `_italic_` → use `<i>italic</i>`
+- `` `code` `` → use `<code>code</code>`
+- `[text](url)` → use `<a href="url">text</a>`
+- `- bullet` or `* bullet` → use `• bullet`
 
 For bullets use `•` (not `-` or `*`). For emphasis in lists, combine: `• <b>Item</b> — description`.
 

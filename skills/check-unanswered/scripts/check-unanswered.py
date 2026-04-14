@@ -2,9 +2,9 @@
 """
 Deterministic unanswered message detector.
 
-A user message is "answered" if a bot message exists with
-reply_to_message_id pointing to it. No reply_to = not an answer,
-just another message. Simple, precise, no time-window heuristics.
+A user message is "handled" if either:
+  1. A bot message exists with reply_to_message_id pointing to it, OR
+  2. The bot already reacted to it (previous heartbeat processed it)
 
 Outputs JSON to stdout. Empty list = nothing to report.
 """
@@ -41,8 +41,10 @@ except sqlite3.OperationalError as e:
 
 cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
 
-# Find user messages that have no bot reply threading to them.
-# A bot message "answers" a user message when reply_to_message_id = user_msg.id
+# Find user messages that have no bot reply AND no bot reaction.
+# A message is "handled" if either:
+#   1. A bot message exists with reply_to_message_id pointing to it, OR
+#   2. The bot already reacted to it (meaning a previous heartbeat processed it)
 unanswered = conn.execute("""
     SELECT m.id, m.sender_name, m.content, m.timestamp
     FROM messages m
@@ -55,6 +57,12 @@ unanswered = conn.execute("""
         WHERE r.chat_jid = m.chat_jid
           AND r.is_from_me = 1
           AND r.reply_to_message_id = m.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM reactions rc
+        WHERE rc.message_id = m.id
+          AND rc.message_chat_jid = m.chat_jid
+          AND rc.reactor_jid = 'bot@telegram'
       )
     ORDER BY m.timestamp ASC
 """, (CHAT_JID, cutoff)).fetchall()

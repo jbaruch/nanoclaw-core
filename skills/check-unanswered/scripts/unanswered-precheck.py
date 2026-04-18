@@ -7,8 +7,15 @@ If no NEW unanswered messages appeared since last check, outputs
 {"wakeAgent": false} so the scheduler skips the LLM entirely.
 
 Works for any group — uses NANOCLAW_CHAT_JID from environment (same as
-check-unanswered.py) and stores seen state in /workspace/group/ which
-is per-container.
+check-unanswered.py) and stores seen state under /home/node/.claude/.
+That directory is the per-session .claude/ bind mount and is always
+writable regardless of container trust tier; /workspace/group/ (the
+earlier location) is read-only for untrusted groups, which made the
+precheck silently fail with EACCES, return scriptResult=null in the
+agent-runner, and skip the LLM every tick — strictly worse than no
+precheck. Per-session scoping is fine here: scheduled tasks always
+fire in the `maintenance` session (src/task-scheduler.ts), so the
+seen-set tracks maintenance's view of this group's unanswered history.
 
 Usage in schedule_task script field:
     python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/unanswered-precheck.py
@@ -21,7 +28,8 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHECK_SCRIPT = os.path.join(SCRIPT_DIR, 'check-unanswered.py')
-SEEN_FILE = '/workspace/group/unanswered-seen.json'
+SEEN_STATE_DIR = '/home/node/.claude/nanoclaw-state'
+SEEN_FILE = os.path.join(SEEN_STATE_DIR, 'unanswered-seen.json')
 
 
 def main():
@@ -51,7 +59,10 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         prev_ids = []
 
-    # Always persist current state for next run
+    # Always persist current state for next run. mkdir-with-parents is
+    # idempotent and avoids hand-written existence checks; the parent
+    # dir is created on first run, then no-op every run after.
+    os.makedirs(SEEN_STATE_DIR, exist_ok=True)
     with open(SEEN_FILE, 'w') as f:
         json.dump(current_ids, f)
 

@@ -43,6 +43,7 @@ the LATEST rows, because newer evidence is more likely to contain
 answers Phase 1's filter missed. CONTEXT_CAP defaults to 200.
 """
 
+import bisect
 import sqlite3
 import json
 import sys
@@ -201,38 +202,70 @@ results = [
 # the skill degrades to blind reply-to-every-candidate, which is
 # exactly the duplicate-answer bug this script exists to avoid.
 if results:
-    # Per-candidate context: for EACH candidate we fetch the first K
-    # messages from its timestamp onward. K is CONTEXT_CAP /
-    # num_candidates (floored at 10 so even a many-candidate run gives
-    # each one some usable context). Dedup by id, sort chronologically
-    # with a stable tie-breaker, then hard-cap at CONTEXT_CAP.
+    # Per-candidate context: for EACH candidate we take the first K
+    # messages at or after its (timestamp, id) position in the chat's
+    # stable sort order. K is CONTEXT_CAP / num_candidates (floored at
+    # 10 so even a many-candidate run gives each one some usable
+    # context). Dedup by id, sort chronologically with a stable
+    # tie-breaker, then hard-cap at CONTEXT_CAP.
     #
-    # Previous strategies (single "first N since earliest" slice;
-    # two-slice earliest+latest union) could leave MIDDLE candidates
-    # in a spread-out set with no immediate-aftermath context, which
-    # is exactly the evidence Phase 2 reasoning needs. Per-candidate
-    # slicing costs num_candidates queries but guarantees every
-    # candidate has at least K rows after it in the window.
+    # Previous strategies that failed and why we arrived here:
+    #   - Single "first N since earliest" slice: spread-out candidates
+    #     had no aftermath visible for the middle/late ones.
+    #   - Earliest+latest two-slice union: same problem, just shifted.
+    #   - Per-candidate SQL query loop: correctness was right, but N+1
+    #     queries hit SQLite N times per precheck — noticeable on busy
+    #     chats with many candidates in a 24h lookback.
+    #
+    # Current approach: ONE bulk fetch from the earliest candidate's
+    # position onward, then per-candidate slicing in Python using
+    # bisect over a sort-key list. O(N * log M + K_total) work instead
+    # of N round-trips to SQLite.
+    #
+    # Bulk-fetch LIMIT = per_cand * num_candidates: the no-overlap
+    # worst case (each candidate's K-row slice is disjoint from every
+    # other's) fits in exactly num_candidates * K rows. Overlap can
+    # only shrink the union, so this bound is safe; the final
+    # CONTEXT_CAP cap below truncates regardless.
     per_cand = max(CONTEXT_CAP // max(len(results), 1), 10)
+    earliest = results[0]
+    fetch_limit = per_cand * len(results)
+    # Lower bound uses lexicographic `(timestamp, id) >= (c_ts, c_id)`,
+    # not `timestamp >= c_ts`. With second-precision timestamps a
+    # message with the same second but a LOWER id actually occurred
+    # BEFORE the earliest candidate in the stable sort order; including
+    # it would pollute the window with pre-candidate rows that can't
+    # possibly be the inline answer Phase 2 is looking for.
+    all_rows = conn.execute(
+        """
+        SELECT id, sender_name, content, timestamp, is_from_me,
+               is_bot_message, reply_to_message_id
+        FROM messages
+        WHERE chat_jid = ?
+          AND (timestamp > ? OR (timestamp = ? AND id >= ?))
+        ORDER BY timestamp ASC, id ASC
+        LIMIT ?
+        """,
+        (
+            CHAT_JID,
+            earliest["timestamp"],
+            earliest["timestamp"],
+            earliest["id"],
+            fetch_limit,
+        ),
+    ).fetchall()
+
+    # Build sort-key index once; bisect each candidate's position in
+    # O(log M) instead of re-scanning. Key matches the SQL ORDER BY
+    # so positions line up exactly.
+    row_keys = [(r[3], r[0]) for r in all_rows]
     context_rows_by_id: dict[object, tuple] = {}
     for cand in results:
-        rows = conn.execute(
-            """
-            SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
-            FROM messages
-            WHERE chat_jid = ?
-              AND timestamp >= ?
-            -- Stable tie-break by id so the LIMIT window is
-            -- deterministic when timestamps tie at second precision.
-            -- Without it, which rows make it into the per-candidate
-            -- slice under ties is undefined and can intermittently
-            -- drop the bot message that addressed the candidate.
-            ORDER BY timestamp ASC, id ASC
-            LIMIT ?
-            """,
-            (CHAT_JID, cand["timestamp"], per_cand),
-        ).fetchall()
-        for r in rows:
+        c_key = (cand["timestamp"], cand["id"])
+        start = bisect.bisect_left(row_keys, c_key)
+        # Slice [start : start+per_cand]; Python handles out-of-range
+        # gracefully (empty if start >= len, short if near the end).
+        for r in all_rows[start : start + per_cand]:
             context_rows_by_id[r[0]] = r
     context_rows = sorted(
         context_rows_by_id.values(), key=lambda r: (r[3], r[0])

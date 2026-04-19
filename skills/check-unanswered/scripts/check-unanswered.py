@@ -36,8 +36,11 @@ expected contiguous window. For the edge case (multiple candidates
 spread across a big high-volume window, e.g. a skipped heartbeat),
 the split guarantees Phase 2 still sees each candidate's immediate
 aftermath — which is where the inline answer, if any, almost always
-lives. CONTEXT_CAP defaults to 200; a minimum slice cap of 50 keeps
-the tail slice useful even if someone overrides CONTEXT_CAP low.
+lives. A final hard cap at `CONTEXT_CAP` keeps
+`len(conversation_since) <= context_cap` as a firm invariant; when
+the two slices union to more than the cap (possible with very spread
+candidates), the LATEST rows win — that's where the inline answer
+would land. CONTEXT_CAP defaults to 200.
 """
 
 import sqlite3
@@ -68,6 +71,19 @@ def _parse_int_env(name: str, default: int) -> tuple[int, str | None]:
 
 LOOKBACK_HOURS, _LB_ERR = _parse_int_env('LOOKBACK_HOURS', 24)
 CONTEXT_CAP, _CC_ERR = _parse_int_env('CONTEXT_CAP', 200)
+# Clamp non-positive CONTEXT_CAP up to 1 so downstream slicing stays
+# sensible (Python's negative-index semantics would otherwise turn
+# `context_rows[-0:]` into "keep everything" and `context_rows[-(-5):]`
+# into "skip 5 from the front, keep the rest" — both surprising).
+# Setting CONTEXT_CAP=0 to silence the context window is rare enough
+# that saving one query isn't worth carrying an `if cap == 0` branch
+# through the whole flow.
+if CONTEXT_CAP < 1:
+    _CC_ERR = (
+        (_CC_ERR + ' | ' if _CC_ERR else '')
+        + f"CONTEXT_CAP={CONTEXT_CAP} is non-positive; clamping to 1"
+    )
+    CONTEXT_CAP = 1
 _env_errors = [e for e in (_LB_ERR, _CC_ERR) if e]
 if _env_errors:
     # Warn but don't fail — the defaults are safe and the script still
@@ -185,7 +201,11 @@ if results:
     # a single monolithic "first N since earliest" query would drop
     # later candidates' context whenever >N messages happened between
     # the earliest and the latest.
-    slice_cap = max(CONTEXT_CAP // 2, 50)
+    # Half-cap per slice, floored at 1 so CONTEXT_CAP=1 still fetches
+    # something. The final `context_rows[-CONTEXT_CAP:]` slice below is
+    # the hard cap that keeps `len(conversation_since) <= context_cap`
+    # invariant — this floor is only about making each slice non-empty.
+    slice_cap = max(CONTEXT_CAP // 2, 1)
     head_rows = conn.execute(
         """
         SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
@@ -224,6 +244,16 @@ if results:
     # Phase 2. Pairing `(ts, id)` gives deterministic order across
     # runs regardless of how the rows were fetched.
     context_rows.sort(key=lambda r: (r[3], r[0]))
+    # Final hard cap at CONTEXT_CAP. `slice_cap = max(CONTEXT_CAP//2,
+    # 50)` keeps each slice useful, but when CONTEXT_CAP is overridden
+    # low (e.g. 20) the head+tail unioned total can exceed the
+    # configured cap — which contradicts what `context_cap` reports.
+    # Clip here so `len(conversation_since) <= context_cap` always
+    # holds, and Phase 2's token/cost budget matches the operator's
+    # intent. Keep the LATEST messages on tie (slicing by `[-cap:]`)
+    # — they're the ones most likely to contain an inline answer.
+    if len(context_rows) > CONTEXT_CAP:
+        context_rows = context_rows[-CONTEXT_CAP:]
     conversation_since = [
         {
             "id": r[0],

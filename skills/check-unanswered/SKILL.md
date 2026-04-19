@@ -15,7 +15,7 @@ python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswer
 
 Output JSON fields:
 - `unanswered`: Phase-1 candidates — user messages matching the SQL filter (no bot reply, no bot reaction).
-- `conversation_since`: every chat message from the earliest candidate's timestamp to now, chronologically, capped at 200. Each entry has `{id, sender_name, content, timestamp, from_bot, reply_to_id}`.
+- `conversation_since`: chat messages from the earliest candidate's timestamp onward, chronologically, capped at `context_cap` (default 200). The cap clips the TAIL, not the head, so the candidate's immediate aftermath (where inline answers land) is always in-window. Each entry has `{id, sender_name, content, timestamp, from_bot, reply_to_id}`.
 - `chat_jid`, `lookback_hours`, `context_cap`, `checked_at`: metadata.
 
 If `unanswered` is empty, stop — nothing to report.
@@ -28,11 +28,18 @@ For **each** candidate in `unanswered`, scan `conversation_since` for bot messag
 
 Decide **YES** or **NO**.
 
-**Guidance:**
-- Be conservative. If a bot message could plausibly be a response (topic match, question answered, request acknowledged), treat it as YES.
-- An unrelated bot message (TripIt notification, heartbeat status, a reply to a DIFFERENT user that happened in the same window) is not an answer — treat as NO.
-- If the candidate was sent right before a completely unrelated user message from the same person, and the bot's subsequent messages addressed the newer message, the older candidate is likely still unanswered — treat as NO.
-- When genuinely uncertain, prefer **NO**. A duplicate response is a minor annoyance; a dropped question is worse.
+**Policy: a single clear bar for YES, everything else is NO.**
+
+Say **YES** only when you can point to a specific bot message in `conversation_since` that clearly addresses this candidate's content — answering its question, acknowledging its request, or directly engaging with its topic. Name the message ID (or the gist) to yourself as a sanity check; if you can't, it's not a match.
+
+Everything else — including "could plausibly be a response," "topic overlaps vaguely," "bot said something after" — is **NO**.
+
+Common NO cases:
+- An unrelated bot message (TripIt notification, heartbeat status, a reply to a DIFFERENT user in the same window).
+- The candidate was followed by a different user message, and the bot's subsequent messages addressed the newer message rather than this candidate.
+- Bot replied to an adjacent topic but not the specific question in the candidate.
+
+Rationale: a duplicate response is a mild annoyance ("I already answered that" → easy to dismiss); a dropped question is worse (user waits, disengages, loses trust in the heartbeat). Bias toward fresh replies.
 
 ## Step 3: Act on the decision
 

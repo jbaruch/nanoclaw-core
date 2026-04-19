@@ -48,8 +48,32 @@ from datetime import datetime, timedelta, timezone
 
 DB = os.environ.get('NANOCLAW_DB', '/workspace/store/messages.db')
 CHAT_JID = os.environ.get('NANOCLAW_CHAT_JID', '')
-LOOKBACK_HOURS = int(os.environ.get('LOOKBACK_HOURS', '24'))
-CONTEXT_CAP = int(os.environ.get('CONTEXT_CAP', '200'))
+
+
+def _parse_int_env(name: str, default: int) -> tuple[int, str | None]:
+    """Parse an integer env var, returning (value, error). On invalid
+    input we fall back to `default` AND surface the original input in
+    the error string so the caller can emit it to stderr — without
+    this, a misconfigured `LOOKBACK_HOURS=abc` would crash the script
+    with a traceback on stdout, breaking the "uniform JSON output
+    shape on error paths" guarantee."""
+    raw = os.environ.get(name)
+    if raw is None or raw == '':
+        return default, None
+    try:
+        return int(raw), None
+    except ValueError:
+        return default, f"{name}={raw!r} is not an integer; using default {default}"
+
+
+LOOKBACK_HOURS, _LB_ERR = _parse_int_env('LOOKBACK_HOURS', 24)
+CONTEXT_CAP, _CC_ERR = _parse_int_env('CONTEXT_CAP', 200)
+_env_errors = [e for e in (_LB_ERR, _CC_ERR) if e]
+if _env_errors:
+    # Warn but don't fail — the defaults are safe and the script still
+    # produces useful output. Surface via stderr so operators see it in
+    # the precheck's error-wake payload.
+    sys.stderr.write(" | ".join(_env_errors) + "\n")
 
 def _empty_payload(error: str):
     """Return the same shape as the success path so downstream consumers
@@ -75,8 +99,13 @@ if not CHAT_JID:
     # Exit non-zero so callers that check the process exit code (e.g.
     # unanswered-precheck.py's `if result.returncode != 0: wake agent`)
     # surface the misconfig instead of treating it as "no unanswered
-    # messages, nothing to do."
-    print(json.dumps(_empty_payload("NANOCLAW_CHAT_JID not set — required env var.")))
+    # messages, nothing to do." Also emit the same message to stderr —
+    # the precheck wraps stderr into its wake-data payload, so operators
+    # see the actual reason for the wake instead of an opaque empty
+    # string.
+    err = "NANOCLAW_CHAT_JID not set — required env var."
+    sys.stderr.write(err + "\n")
+    print(json.dumps(_empty_payload(err)))
     sys.exit(1)
 
 try:
@@ -84,7 +113,9 @@ try:
 except sqlite3.OperationalError as e:
     # DB access failure is also a hard problem worth waking someone for,
     # not a silent "zero orphans" answer.
-    print(json.dumps(_empty_payload(f"DB open failed: {e}")))
+    err = f"DB open failed: {e}"
+    sys.stderr.write(err + "\n")
+    print(json.dumps(_empty_payload(err)))
     sys.exit(1)
 
 cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
@@ -131,12 +162,12 @@ results = [
     for msg_id, sender, content, ts in unanswered
 ]
 
-# Phase 2 context: every chat message from the earliest candidate's
-# timestamp up to now. The skill reads this to decide per-candidate
-# "did a subsequent bot message address this inline?" — without the
-# context, there's no reasoning possible and the skill degrades to
-# blind reply-to-every-candidate, which is exactly the duplicate-
-# answer bug this script exists to avoid.
+# Phase 2 context: a bounded window of chat messages around the
+# candidates (see the two-slice strategy below). The skill reads this
+# to decide per-candidate "did a subsequent bot message address this
+# inline?" — without the context, there's no reasoning possible and
+# the skill degrades to blind reply-to-every-candidate, which is
+# exactly the duplicate-answer bug this script exists to avoid.
 if results:
     earliest_orphan_ts = results[0]["timestamp"]
     latest_orphan_ts = results[-1]["timestamp"]
@@ -185,7 +216,14 @@ if results:
             continue
         seen_ids.add(r[0])
         context_rows.append(r)
-    context_rows.sort(key=lambda r: r[3])
+    # Stable tie-break by id when timestamps collide. SQLite message
+    # timestamps are second-precision in some paths, and two messages
+    # that arrive within the same second will both sort-compare equal
+    # on the timestamp alone. Python's sort is stable, but insertion
+    # order here comes from head+tail concatenation — not useful for
+    # Phase 2. Pairing `(ts, id)` gives deterministic order across
+    # runs regardless of how the rows were fetched.
+    context_rows.sort(key=lambda r: (r[3], r[0]))
     conversation_since = [
         {
             "id": r[0],

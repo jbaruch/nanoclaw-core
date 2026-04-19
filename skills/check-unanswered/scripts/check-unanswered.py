@@ -27,15 +27,17 @@ consumers can parse/log uniformly):
   }
 
 `unanswered` is the Phase-1 candidate set (same as before).
-`conversation_since` is every chat message from the earliest candidate's
-timestamp up to now, chronologically, so the skill's Phase 2 reasoning
-has the context to decide per-candidate "addressed inline" vs "truly
-unanswered." Capped at `CONTEXT_CAP` (default 200). The cap picks the
-FIRST N messages after the earliest candidate — inline answers almost
-always land within a few messages of the candidate itself, so clipping
-the TAIL preserves the evidence Phase 2 needs. Clipping the head
-(e.g. "last 200") would drop the answer whenever the chat is very
-active after it.
+`conversation_since` is a chronologically-ordered, deduplicated union
+of two slices: the first CONTEXT_CAP/2 messages from the EARLIEST
+candidate onward, and the first CONTEXT_CAP/2 messages from the LATEST
+candidate onward. For the typical case (candidates close together,
+heartbeat running regularly) the slices overlap and dedup to the
+expected contiguous window. For the edge case (multiple candidates
+spread across a big high-volume window, e.g. a skipped heartbeat),
+the split guarantees Phase 2 still sees each candidate's immediate
+aftermath — which is where the inline answer, if any, almost always
+lives. CONTEXT_CAP defaults to 200; a minimum slice cap of 50 keeps
+the tail slice useful even if someone overrides CONTEXT_CAP low.
 """
 
 import sqlite3
@@ -69,14 +71,21 @@ if not CHAT_JID:
     # determine which group to check. The previous fallback (most
     # recent bot message) was removed because it could select the
     # wrong group when the DB contains messages from multiple chats.
+    #
+    # Exit non-zero so callers that check the process exit code (e.g.
+    # unanswered-precheck.py's `if result.returncode != 0: wake agent`)
+    # surface the misconfig instead of treating it as "no unanswered
+    # messages, nothing to do."
     print(json.dumps(_empty_payload("NANOCLAW_CHAT_JID not set — required env var.")))
-    sys.exit(0)
+    sys.exit(1)
 
 try:
     conn = sqlite3.connect(DB, timeout=5)
 except sqlite3.OperationalError as e:
+    # DB access failure is also a hard problem worth waking someone for,
+    # not a silent "zero orphans" answer.
     print(json.dumps(_empty_payload(f"DB open failed: {e}")))
-    sys.exit(0)
+    sys.exit(1)
 
 cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
 
@@ -90,8 +99,8 @@ cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime
 #   - `r.is_from_me = 1` covers main-bot sends (the orchestrator's
 #     primary Telegram identity).
 #   - `r.is_bot_message = 1` covers pool-bot sends (agent-swarm bots
-#     operating under a per-sender identity; see sendPoolMessage in
-#     src/channels/telegram.ts).
+#     operating under a per-sender identity; written by the
+#     orchestrator's `sendPoolMessage` code path).
 # A narrower check that only matched `is_from_me = 1` missed pool-bot
 # threaded replies, so the main-bot + pool-bot mix would resurface
 # already-answered messages as candidates.
@@ -130,24 +139,53 @@ results = [
 # answer bug this script exists to avoid.
 if results:
     earliest_orphan_ts = results[0]["timestamp"]
-    # LIMIT clipping direction: fetch the FIRST N messages after the
-    # earliest candidate, not the most recent N. Inline answers almost
-    # always land within a few messages of the candidate itself, so
-    # the critical evidence lives at the top of the window. "Last N"
-    # would drop the answer whenever the chat had more than
-    # CONTEXT_CAP messages after it. The tail-clip bias: if the chat
-    # genuinely does have 200+ messages after a candidate AND the
-    # inline answer is past the cap, Phase 2 will miss it and
-    # duplicate a reply — a worse outcome would be to guarantee we
-    # miss the answer entirely (what last-N did), so head-clip wins.
-    context_rows = conn.execute("""
+    latest_orphan_ts = results[-1]["timestamp"]
+    # Two-slice context window:
+    #   - HEAD: first N/2 messages from the earliest candidate onward.
+    #     Covers the first candidate's immediate aftermath, where an
+    #     inline answer (if any) almost always lives.
+    #   - TAIL: first N/2 messages from the latest candidate onward.
+    #     Covers the latest candidate's immediate aftermath.
+    # When candidates are close together (typical heartbeat case) the
+    # two slices overlap and dedup collapses them. When candidates are
+    # spread across a high-volume chat window (e.g. heartbeat was
+    # skipped for hours), the split guarantees each candidate still
+    # has its "did the bot answer this?" context visible to Phase 2 —
+    # a single monolithic "first N since earliest" query would drop
+    # later candidates' context whenever >N messages happened between
+    # the earliest and the latest.
+    slice_cap = max(CONTEXT_CAP // 2, 50)
+    head_rows = conn.execute(
+        """
         SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
         FROM messages
         WHERE chat_jid = ?
           AND timestamp >= ?
         ORDER BY timestamp ASC
         LIMIT ?
-    """, (CHAT_JID, earliest_orphan_ts, CONTEXT_CAP)).fetchall()
+        """,
+        (CHAT_JID, earliest_orphan_ts, slice_cap),
+    ).fetchall()
+    tail_rows = conn.execute(
+        """
+        SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
+        FROM messages
+        WHERE chat_jid = ?
+          AND timestamp >= ?
+        ORDER BY timestamp ASC
+        LIMIT ?
+        """,
+        (CHAT_JID, latest_orphan_ts, slice_cap),
+    ).fetchall()
+    # Dedup by id, preserve chronological order.
+    seen_ids = set()
+    context_rows = []
+    for r in head_rows + tail_rows:
+        if r[0] in seen_ids:
+            continue
+        seen_ids.add(r[0])
+        context_rows.append(r)
+    context_rows.sort(key=lambda r: r[3])
     conversation_since = [
         {
             "id": r[0],

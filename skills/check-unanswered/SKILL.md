@@ -15,10 +15,11 @@ python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswer
 
 Output JSON fields:
 - `unanswered`: Phase-1 candidates — user messages matching the SQL filter (no bot reply, no bot reaction).
-- `conversation_since`: chat messages from the earliest candidate's timestamp onward, chronologically, capped at `context_cap` (default 200). The cap clips the TAIL, not the head, so the candidate's immediate aftermath (where inline answers land) is always in-window. Each entry has `{id, sender_name, content, timestamp, from_bot, reply_to_id}`.
+- `conversation_since`: chat messages chronologically around the candidates, so Phase 2 can judge inline answers. Internally, this is the deduped union of `context_cap/2` messages from the earliest candidate and `context_cap/2` from the latest — the typical close-together case collapses to one window, and the spread-out case keeps each candidate's immediate aftermath visible. Each entry: `{id, sender_name, content, timestamp, from_bot, reply_to_id}`. Default `context_cap`: 200.
 - `chat_jid`, `lookback_hours`, `context_cap`, `checked_at`: metadata.
+- `error` (only on failure paths): short string describing what went wrong (missing `NANOCLAW_CHAT_JID`, DB open failure, etc.). The script also exits non-zero in this case, so the precheck wrapper surfaces the failure rather than treating it as "no unanswered messages."
 
-If `unanswered` is empty, stop — nothing to report.
+**Stop condition:** only stop if `unanswered` is empty AND no `error` is present. If `error` is set, report it (don't silently treat as "nothing to do") — the heartbeat is mis-wired or the DB is sick.
 
 ## Step 2: Per-candidate Phase 2 reasoning
 

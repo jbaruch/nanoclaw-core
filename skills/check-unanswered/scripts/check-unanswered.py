@@ -179,26 +179,26 @@ if not CHAT_JID:
     print(json.dumps(_empty_payload(err)))
     sys.exit(1)
 
-try:
-    conn = sqlite3.connect(DB, timeout=5)
-except sqlite3.OperationalError as e:
-    # DB access failure is also a hard problem worth waking someone for,
-    # not a silent "zero orphans" answer.
-    err = f"DB open failed: {e}"
-    sys.stderr.write(err + "\n")
-    print(json.dumps(_empty_payload(err)))
-    sys.exit(1)
-
 cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
 
-# Main body wrapped so ANY sqlite3 failure downstream of the initial
-# connect — locked DB during execute, missing/renamed column, corrupt
-# index, schema drift — hits the same canonical JSON-error + non-zero
-# exit path as the open-failure case above. Without this wrap, a later
-# execute() would raise with a traceback on stdout, breaking the
-# "uniform JSON output shape on error paths" contract and leaving the
-# precheck wrapper with a JSON-parse error instead of a readable reason.
+# Single try covering BOTH `sqlite3.connect` and every downstream
+# `.execute()` — locked/busy DB on open, locked mid-query, missing or
+# renamed table, schema drift, corrupt index, etc. All of them reach the
+# same canonical JSON-error + stderr + exit-1 path, so downstream
+# consumers never see a raw traceback on stdout (which would break the
+# "uniform JSON output shape on error paths" contract and leave
+# `unanswered-precheck.py` with a JSON-parse error instead of a
+# readable reason string).
+#
+# We catch `sqlite3.Error` (the base class) rather than just
+# `sqlite3.OperationalError` so corruption / integrity errors are
+# covered too — the OperationalError-only version shipped earlier and
+# turned out to leak tracebacks on corner cases (e.g. missing `messages`
+# table if someone pointed the script at a wrong DB path).
+conn = None
 try:
+    conn = sqlite3.connect(DB, timeout=5)
+
     # Phase 1: find user messages with no bot reply AND no bot reaction.
     # A message is "handled" if either:
     #   1. A bot message exists with reply_to_message_id pointing to it, OR
@@ -389,24 +389,27 @@ try:
     else:
         conversation_since = []
 except sqlite3.Error as e:
-    # Any sqlite error after the open succeeded: locked/busy DB during
-    # execute, missing table/column, corrupt index, etc. Emit the
-    # canonical error JSON on stdout, a short human-readable reason on
-    # stderr (the precheck wrapper uses `result.stderr[:500]` for its
-    # wake-data error field), and exit non-zero so the precheck treats
-    # this as "wake the agent" rather than "clean empty result."
-    err = f"DB error during query: {e}"
+    # Any sqlite error — open failure OR post-open query/schema errors.
+    # Emit the canonical error JSON on stdout, a short human-readable
+    # reason on stderr (the precheck wrapper uses `result.stderr[:500]`
+    # for its wake-data error field), and exit non-zero so the precheck
+    # treats this as "wake the agent" rather than "clean empty result."
+    # Distinguishing open vs query failure in the message helps operators
+    # triage (config/path issue vs runtime DB issue).
+    phase = "open" if conn is None else "query"
+    err = f"DB {phase} failed: {e}"
     sys.stderr.write(err + "\n")
     print(json.dumps(_empty_payload(err)))
-    try:
-        conn.close()
-    except sqlite3.Error as close_err:
-        # `conn.close()` rarely fails, but if it does (underlying fd
-        # already gone, etc.) surface the secondary error on stderr so
-        # it's visible — without shadowing the primary cause above.
-        # Silencing this would violate the repo's no-error-suppression
-        # rule; we log both and let the primary err drive exit 1.
-        sys.stderr.write(f"(secondary: close failed: {close_err})\n")
+    if conn is not None:
+        # `conn.close()` on a successfully-opened connection rarely
+        # fails, but if it does (underlying fd already gone, etc.)
+        # surface the secondary error on stderr so it's visible —
+        # without shadowing the primary cause above. Silencing would
+        # violate the no-error-suppression rule.
+        try:
+            conn.close()
+        except sqlite3.Error as close_err:
+            sys.stderr.write(f"(secondary: close failed: {close_err})\n")
     sys.exit(1)
 
 conn.close()

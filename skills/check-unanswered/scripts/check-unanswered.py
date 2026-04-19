@@ -22,13 +22,15 @@ Output shape:
     "lookback_hours": int,
     "context_cap": int,
     "checked_at": ISO-8601,
-    "error": str | null,  # `null` on success, short message on failure
+    "error": str | null,  # `null` on clean success; short message on
+                          # hard failure OR env-var warning (prefixed
+                          # with `env-warning:` when it's a warning).
   }
 Every key is present on both success and error paths so downstream
 consumers (unanswered-precheck.py, the skill) can parse uniformly —
 check `error` for truthiness to distinguish.
 
-`unanswered` is the Phase-1 candidate set (same as before).
+`unanswered` is the Phase-1 candidate set.
 `conversation_since` is a chronologically-ordered, deduplicated union
 of per-candidate slices: for EACH candidate we fetch the first K
 messages starting at its timestamp, where K = CONTEXT_CAP /
@@ -86,18 +88,46 @@ if CONTEXT_CAP < 1:
     CONTEXT_CAP = 1
 _env_errors = [e for e in (_LB_ERR, _CC_ERR) if e]
 if _env_errors:
-    # Warn but don't fail — the defaults are safe and the script still
-    # produces useful output. Surface via stderr so operators see it in
-    # the precheck's error-wake payload.
+    # Non-fatal — defaults are safe and the script still produces
+    # useful output. BOTH surface paths matter:
+    #   - stderr, so a human tailing the precheck sees it on first tick.
+    #   - threaded into the JSON payload's `error` field (see
+    #     `_merge_env_warnings` / `_make_payload`), so downstream
+    #     consumers can distinguish "legit no-unanswered run with a
+    #     config typo the operator should know about" from "clean run,
+    #     all is well" without scraping stderr.
+    # Exit stays 0: the script did its job with defaults; crash-looping
+    # the precheck on a bad env var is strictly worse than running with
+    # sensible defaults and warning loudly.
     sys.stderr.write(" | ".join(_env_errors) + "\n")
+
+
+_ENV_WARN_PREFIX = "env-warning: "
+
+
+def _merge_env_warnings(primary: str | None) -> str | None:
+    """Thread any env-parse warnings into the payload's `error` field
+    alongside a hard error (if any). Primary hard error wins position;
+    env warnings trail. On pure-success (primary=None, no env errors)
+    returns None so downstream `if error is None` keeps working for
+    the common case — the precheck's stop condition shouldn't change
+    semantics just because an env var is slightly off."""
+    if not _env_errors:
+        return primary
+    env_msg = _ENV_WARN_PREFIX + " | ".join(_env_errors)
+    if primary is None:
+        return env_msg
+    return f"{primary} ({env_msg})"
+
 
 def _make_payload(
     unanswered: list,
     conversation_since: list,
     error: str | None,
 ):
-    """Build the single canonical output shape. Used by both the
-    happy path (error=None) and error paths (error=short message).
+    """Build the single canonical output shape. Used by both the happy
+    path (error=None, no env warnings → `error` serializes as `null`)
+    and error paths (error=short message and/or env-warning surfacing).
     Every key is present in both cases so downstream consumers don't
     have to special-case error JSON."""
     return {
@@ -107,7 +137,7 @@ def _make_payload(
         "lookback_hours": LOOKBACK_HOURS,
         "context_cap": CONTEXT_CAP,
         "checked_at": datetime.now(timezone.utc).isoformat(),
-        "error": error,
+        "error": _merge_env_warnings(error),
     }
 
 
@@ -135,133 +165,149 @@ if not CHAT_JID:
     print(json.dumps(_empty_payload(err)))
     sys.exit(1)
 
+cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
+
+# Single try/finally covering BOTH `sqlite3.connect` and every
+# downstream `.execute()` — locked/busy DB on open, locked mid-query,
+# missing or renamed table, schema drift, corrupt index, etc. All of
+# them reach the same canonical JSON-error + stderr + exit-1 path, so
+# downstream consumers never see a raw traceback on stdout (which
+# would break the "uniform JSON output shape on error paths" contract
+# and leave `unanswered-precheck.py` with a JSON-parse error instead
+# of a readable reason string).
+#
+# We catch `sqlite3.Error` (the base class) rather than just
+# `sqlite3.OperationalError` so corruption / integrity errors are
+# covered too — the narrower version leaks tracebacks on corner cases
+# (e.g. `DatabaseError` when the `messages` table is missing because
+# someone pointed the script at the wrong DB path).
+conn = None
 try:
     conn = sqlite3.connect(DB, timeout=5)
-except sqlite3.OperationalError as e:
-    # DB access failure is also a hard problem worth waking someone for,
+
+    # Phase 1: find user messages with no bot reply AND no bot reaction.
+    # A message is "handled" if either:
+    #   1. A bot message exists with reply_to_message_id pointing to it, OR
+    #   2. The bot already reacted to it (previous heartbeat marked it
+    #      addressed inline via Phase 2 reasoning).
+    #
+    # The "bot message" predicate accepts EITHER flag:
+    #   - `r.is_from_me = 1` covers main-bot sends (the orchestrator's
+    #     primary Telegram identity).
+    #   - `r.is_bot_message = 1` covers pool-bot sends (agent-swarm bots
+    #     operating under a per-sender identity; written by the
+    #     orchestrator's `sendPoolMessage` code path).
+    # A narrower check that only matched `is_from_me = 1` missed pool-bot
+    # threaded replies, so the main-bot + pool-bot mix would resurface
+    # already-answered messages as candidates.
+    unanswered = conn.execute("""
+        SELECT m.id, m.sender_name, m.content, m.timestamp
+        FROM messages m
+        WHERE m.chat_jid = ?
+          AND m.is_from_me = 0
+          AND m.is_bot_message = 0
+          AND m.timestamp > ?
+          AND NOT EXISTS (
+            SELECT 1 FROM messages r
+            WHERE r.chat_jid = m.chat_jid
+              AND (r.is_from_me = 1 OR r.is_bot_message = 1)
+              AND r.reply_to_message_id = m.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM reactions rc
+            WHERE rc.message_id = m.id
+              AND rc.message_chat_jid = m.chat_jid
+              AND rc.reactor_jid = 'bot@telegram'
+          )
+        -- id is the tie-break: SQLite timestamps are second-precision in
+        -- some paths, and two messages in the same second would otherwise
+        -- sort non-deterministically. Downstream code picks results[0]
+        -- and results[-1] as "earliest/latest candidate" for context-
+        -- window planning; a stable order keeps those picks reproducible.
+        ORDER BY m.timestamp ASC, m.id ASC
+    """, (CHAT_JID, cutoff)).fetchall()
+
+    results = [
+        {"id": msg_id, "sender_name": sender, "content": content, "timestamp": ts}
+        for msg_id, sender, content, ts in unanswered
+    ]
+
+    # Phase 2 context: a bounded window of chat messages around the
+    # candidates (see per-candidate slicing below). The skill reads this
+    # to decide per-candidate "did a subsequent bot message address this
+    # inline?" — without the context, there's no reasoning possible and
+    # the skill degrades to blind reply-to-every-candidate, which is
+    # exactly the duplicate-answer bug this script exists to avoid.
+    if results:
+        # Per-candidate context: for EACH candidate we fetch the first K
+        # messages from its timestamp onward. K is CONTEXT_CAP /
+        # num_candidates (floored at 10 so even a many-candidate run gives
+        # each one some usable context). Dedup by id, sort chronologically
+        # with a stable tie-breaker, then hard-cap at CONTEXT_CAP.
+        #
+        # Previous strategies (single "first N since earliest" slice;
+        # two-slice earliest+latest union) could leave MIDDLE candidates
+        # in a spread-out set with no immediate-aftermath context, which
+        # is exactly the evidence Phase 2 reasoning needs. Per-candidate
+        # slicing costs num_candidates queries but guarantees every
+        # candidate has at least K rows after it in the window.
+        per_cand = max(CONTEXT_CAP // max(len(results), 1), 10)
+        context_rows_by_id: dict[object, tuple] = {}
+        for cand in results:
+            rows = conn.execute(
+                """
+                SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
+                FROM messages
+                WHERE chat_jid = ?
+                  AND timestamp >= ?
+                -- Stable tie-break by id so the LIMIT window is
+                -- deterministic when timestamps tie at second precision.
+                -- Without it, which rows make it into the per-candidate
+                -- slice under ties is undefined and can intermittently
+                -- drop the bot message that addressed the candidate.
+                ORDER BY timestamp ASC, id ASC
+                LIMIT ?
+                """,
+                (CHAT_JID, cand["timestamp"], per_cand),
+            ).fetchall()
+            for r in rows:
+                context_rows_by_id[r[0]] = r
+        context_rows = sorted(
+            context_rows_by_id.values(), key=lambda r: (r[3], r[0])
+        )
+        # Final hard cap at CONTEXT_CAP: honors the operator-configured
+        # upper bound regardless of how the per-candidate slices unioned.
+        # Keep the LATEST rows on tie (slicing by `[-cap:]`) — newer
+        # evidence is more likely to contain an inline answer Phase 1's
+        # SQL filter missed.
+        if len(context_rows) > CONTEXT_CAP:
+            context_rows = context_rows[-CONTEXT_CAP:]
+        conversation_since = [
+            {
+                "id": r[0],
+                "sender_name": r[1],
+                "content": r[2],
+                "timestamp": r[3],
+                # A message is "from the bot" if either flag is set — older
+                # rows set `is_from_me=1` for the main-bot identity while
+                # pool-bot sends set `is_bot_message=1`. Unified here so the
+                # skill doesn't have to know which column applies.
+                "from_bot": bool(r[4]) or bool(r[5]),
+                "reply_to_id": r[6],
+            }
+            for r in context_rows
+        ]
+    else:
+        conversation_since = []
+except sqlite3.Error as e:
+    # DB access failure is a hard problem worth waking someone for,
     # not a silent "zero orphans" answer.
-    err = f"DB open failed: {e}"
+    err = f"DB access failed: {e}"
     sys.stderr.write(err + "\n")
     print(json.dumps(_empty_payload(err)))
     sys.exit(1)
-
-cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
-
-# Phase 1: find user messages with no bot reply AND no bot reaction.
-# A message is "handled" if either:
-#   1. A bot message exists with reply_to_message_id pointing to it, OR
-#   2. The bot already reacted to it (previous heartbeat marked it
-#      addressed inline via Phase 2 reasoning).
-#
-# The "bot message" predicate accepts EITHER flag:
-#   - `r.is_from_me = 1` covers main-bot sends (the orchestrator's
-#     primary Telegram identity).
-#   - `r.is_bot_message = 1` covers pool-bot sends (agent-swarm bots
-#     operating under a per-sender identity; written by the
-#     orchestrator's `sendPoolMessage` code path).
-# A narrower check that only matched `is_from_me = 1` missed pool-bot
-# threaded replies, so the main-bot + pool-bot mix would resurface
-# already-answered messages as candidates.
-unanswered = conn.execute("""
-    SELECT m.id, m.sender_name, m.content, m.timestamp
-    FROM messages m
-    WHERE m.chat_jid = ?
-      AND m.is_from_me = 0
-      AND m.is_bot_message = 0
-      AND m.timestamp > ?
-      AND NOT EXISTS (
-        SELECT 1 FROM messages r
-        WHERE r.chat_jid = m.chat_jid
-          AND (r.is_from_me = 1 OR r.is_bot_message = 1)
-          AND r.reply_to_message_id = m.id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM reactions rc
-        WHERE rc.message_id = m.id
-          AND rc.message_chat_jid = m.chat_jid
-          AND rc.reactor_jid = 'bot@telegram'
-      )
-    -- id is the tie-break: SQLite timestamps are second-precision in
-    -- some paths, and two messages in the same second would otherwise
-    -- sort non-deterministically. Downstream code picks results[0]
-    -- and results[-1] as "earliest/latest candidate" for context-
-    -- window planning; a stable order keeps those picks reproducible.
-    ORDER BY m.timestamp ASC, m.id ASC
-""", (CHAT_JID, cutoff)).fetchall()
-
-results = [
-    {"id": msg_id, "sender_name": sender, "content": content, "timestamp": ts}
-    for msg_id, sender, content, ts in unanswered
-]
-
-# Phase 2 context: a bounded window of chat messages around the
-# candidates (see per-candidate slicing below). The skill reads this
-# to decide per-candidate "did a subsequent bot message address this
-# inline?" — without the context, there's no reasoning possible and
-# the skill degrades to blind reply-to-every-candidate, which is
-# exactly the duplicate-answer bug this script exists to avoid.
-if results:
-    # Per-candidate context: for EACH candidate we fetch the first K
-    # messages from its timestamp onward. K is CONTEXT_CAP /
-    # num_candidates (floored at 10 so even a many-candidate run gives
-    # each one some usable context). Dedup by id, sort chronologically
-    # with a stable tie-breaker, then hard-cap at CONTEXT_CAP.
-    #
-    # Previous strategies (single "first N since earliest" slice;
-    # two-slice earliest+latest union) could leave MIDDLE candidates
-    # in a spread-out set with no immediate-aftermath context, which
-    # is exactly the evidence Phase 2 reasoning needs. Per-candidate
-    # slicing costs num_candidates queries but guarantees every
-    # candidate has at least K rows after it in the window.
-    per_cand = max(CONTEXT_CAP // max(len(results), 1), 10)
-    context_rows_by_id: dict[object, tuple] = {}
-    for cand in results:
-        rows = conn.execute(
-            """
-            SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
-            FROM messages
-            WHERE chat_jid = ?
-              AND timestamp >= ?
-            -- Stable tie-break by id so the LIMIT window is
-            -- deterministic when timestamps tie at second precision.
-            -- Without it, which rows make it into the per-candidate
-            -- slice under ties is undefined and can intermittently
-            -- drop the bot message that addressed the candidate.
-            ORDER BY timestamp ASC, id ASC
-            LIMIT ?
-            """,
-            (CHAT_JID, cand["timestamp"], per_cand),
-        ).fetchall()
-        for r in rows:
-            context_rows_by_id[r[0]] = r
-    context_rows = sorted(
-        context_rows_by_id.values(), key=lambda r: (r[3], r[0])
-    )
-    # Final hard cap at CONTEXT_CAP: honors the operator-configured
-    # upper bound regardless of how the per-candidate slices unioned.
-    # Keep the LATEST rows on tie (slicing by `[-cap:]`) — newer
-    # evidence is more likely to contain an inline answer Phase 1's
-    # SQL filter missed.
-    if len(context_rows) > CONTEXT_CAP:
-        context_rows = context_rows[-CONTEXT_CAP:]
-    conversation_since = [
-        {
-            "id": r[0],
-            "sender_name": r[1],
-            "content": r[2],
-            "timestamp": r[3],
-            # A message is "from the bot" if either flag is set — older
-            # rows set `is_from_me=1` for the main-bot identity while
-            # pool-bot sends set `is_bot_message=1`. Unified here so the
-            # skill doesn't have to know which column applies.
-            "from_bot": bool(r[4]) or bool(r[5]),
-            "reply_to_id": r[6],
-        }
-        for r in context_rows
-    ]
-else:
-    conversation_since = []
-
-conn.close()
+finally:
+    if conn is not None:
+        conn.close()
 
 print(json.dumps(_make_payload(results, conversation_since, None)))

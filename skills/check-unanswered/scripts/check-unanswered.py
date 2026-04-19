@@ -27,8 +27,16 @@ Output shape:
                           # with `env-warning:` when it's a warning).
   }
 Every key is present on both success and error paths so downstream
-consumers (unanswered-precheck.py, the skill) can parse uniformly —
-check `error` for truthiness to distinguish.
+consumers (unanswered-precheck.py, the skill) can parse uniformly.
+Interpret `error` as three states, not two:
+  - `null`                    → clean success, nothing to report.
+  - starts with `env-warning:` → non-fatal config issue; script still
+                                 produced a useful result. Surface to
+                                 operator (logs/wake payload) but don't
+                                 treat as failure.
+  - anything else             → hard failure; script also exits
+                                 non-zero, so downstream consumers
+                                 keying on returncode already wake.
 
 `unanswered` is the Phase-1 candidate set.
 `conversation_since` is a chronologically-ordered, deduplicated union
@@ -89,13 +97,17 @@ if CONTEXT_CAP < 1:
 _env_errors = [e for e in (_LB_ERR, _CC_ERR) if e]
 if _env_errors:
     # Non-fatal — defaults are safe and the script still produces
-    # useful output. BOTH surface paths matter:
-    #   - stderr, so a human tailing the precheck sees it on first tick.
-    #   - threaded into the JSON payload's `error` field (see
-    #     `_merge_env_warnings` / `_make_payload`), so downstream
-    #     consumers can distinguish "legit no-unanswered run with a
-    #     config typo the operator should know about" from "clean run,
-    #     all is well" without scraping stderr.
+    # useful output. Two surface paths, each with a different audience:
+    #   - stderr, for operators running this script directly (container
+    #     shell, ad-hoc debugging). NOT the channel for scheduled runs:
+    #     `unanswered-precheck.py` uses capture_output=True and only
+    #     forwards stderr on non-zero exit, so the scheduler never sees
+    #     stderr from a successful run.
+    #   - JSON payload `error` field with an `env-warning:` prefix (see
+    #     `_merge_env_warnings` / `_make_payload`). THIS is the channel
+    #     scheduled consumers read; the precheck propagates it into its
+    #     own output so operators see config issues in the wake payload
+    #     rather than having to tail container logs.
     # Exit stays 0: the script did its job with defaults; crash-looping
     # the precheck on a bad env var is strictly worse than running with
     # sensible defaults and warning loudly.

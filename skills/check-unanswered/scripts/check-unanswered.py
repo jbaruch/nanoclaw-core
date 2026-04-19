@@ -13,8 +13,7 @@ scripts can't do "did this bot message substantively respond to that
 user message" reliably, and the phrasing of the question is exactly
 what LLMs are for.
 
-Output shape (same on success AND on error paths, so downstream
-consumers can parse/log uniformly):
+Output shape:
   {
     "unanswered": [ {id, sender_name, content, timestamp}, ... ],
     "conversation_since": [ {id, sender_name, content, timestamp,
@@ -23,24 +22,25 @@ consumers can parse/log uniformly):
     "lookback_hours": int,
     "context_cap": int,
     "checked_at": ISO-8601,
-    "error": str,     # present only when something went wrong
+    "error": str | null,  # `null` on success, short message on failure
   }
+Every key is present on both success and error paths so downstream
+consumers (unanswered-precheck.py, the skill) can parse uniformly —
+check `error` for truthiness to distinguish.
 
 `unanswered` is the Phase-1 candidate set (same as before).
 `conversation_since` is a chronologically-ordered, deduplicated union
-of two slices: the first CONTEXT_CAP/2 messages from the EARLIEST
-candidate onward, and the first CONTEXT_CAP/2 messages from the LATEST
-candidate onward. For the typical case (candidates close together,
-heartbeat running regularly) the slices overlap and dedup to the
-expected contiguous window. For the edge case (multiple candidates
-spread across a big high-volume window, e.g. a skipped heartbeat),
-the split guarantees Phase 2 still sees each candidate's immediate
-aftermath — which is where the inline answer, if any, almost always
-lives. A final hard cap at `CONTEXT_CAP` keeps
-`len(conversation_since) <= context_cap` as a firm invariant; when
-the two slices union to more than the cap (possible with very spread
-candidates), the LATEST rows win — that's where the inline answer
-would land. CONTEXT_CAP defaults to 200.
+of per-candidate slices: for EACH candidate we fetch the first K
+messages starting at its timestamp, where K = CONTEXT_CAP /
+num_candidates (floored at 10). Messages that appear in multiple
+candidates' slices collapse via id-dedup. This guarantees every
+candidate — including middle ones in a spread-out set — has its
+immediate aftermath in-window, which is where an inline bot answer
+would land. A final hard cap at `CONTEXT_CAP` keeps
+`len(conversation_since) <= context_cap` as a firm invariant; if the
+union exceeds the cap (very active chat + many candidates), we keep
+the LATEST rows, because newer evidence is more likely to contain
+answers Phase 1's filter missed. CONTEXT_CAP defaults to 200.
 """
 
 import sqlite3
@@ -91,19 +91,30 @@ if _env_errors:
     # the precheck's error-wake payload.
     sys.stderr.write(" | ".join(_env_errors) + "\n")
 
-def _empty_payload(error: str):
-    """Return the same shape as the success path so downstream consumers
-    don't have to special-case error JSON. Every key the happy path
-    emits is present here; `error` is the only extra."""
+def _make_payload(
+    unanswered: list,
+    conversation_since: list,
+    error: str | None,
+):
+    """Build the single canonical output shape. Used by both the
+    happy path (error=None) and error paths (error=short message).
+    Every key is present in both cases so downstream consumers don't
+    have to special-case error JSON."""
     return {
-        "unanswered": [],
-        "conversation_since": [],
+        "unanswered": unanswered,
+        "conversation_since": conversation_since,
         "chat_jid": CHAT_JID,
         "lookback_hours": LOOKBACK_HOURS,
         "context_cap": CONTEXT_CAP,
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "error": error,
     }
+
+
+def _empty_payload(error: str):
+    """Shortcut for the error paths: no candidates, no context,
+    `error` set."""
+    return _make_payload([], [], error)
 
 
 if not CHAT_JID:
@@ -170,7 +181,12 @@ unanswered = conn.execute("""
           AND rc.message_chat_jid = m.chat_jid
           AND rc.reactor_jid = 'bot@telegram'
       )
-    ORDER BY m.timestamp ASC
+    -- id is the tie-break: SQLite timestamps are second-precision in
+    -- some paths, and two messages in the same second would otherwise
+    -- sort non-deterministically. Downstream code picks results[0]
+    -- and results[-1] as "earliest/latest candidate" for context-
+    -- window planning; a stable order keeps those picks reproducible.
+    ORDER BY m.timestamp ASC, m.id ASC
 """, (CHAT_JID, cutoff)).fetchall()
 
 results = [
@@ -179,79 +195,53 @@ results = [
 ]
 
 # Phase 2 context: a bounded window of chat messages around the
-# candidates (see the two-slice strategy below). The skill reads this
+# candidates (see per-candidate slicing below). The skill reads this
 # to decide per-candidate "did a subsequent bot message address this
 # inline?" — without the context, there's no reasoning possible and
 # the skill degrades to blind reply-to-every-candidate, which is
 # exactly the duplicate-answer bug this script exists to avoid.
 if results:
-    earliest_orphan_ts = results[0]["timestamp"]
-    latest_orphan_ts = results[-1]["timestamp"]
-    # Two-slice context window:
-    #   - HEAD: first N/2 messages from the earliest candidate onward.
-    #     Covers the first candidate's immediate aftermath, where an
-    #     inline answer (if any) almost always lives.
-    #   - TAIL: first N/2 messages from the latest candidate onward.
-    #     Covers the latest candidate's immediate aftermath.
-    # When candidates are close together (typical heartbeat case) the
-    # two slices overlap and dedup collapses them. When candidates are
-    # spread across a high-volume chat window (e.g. heartbeat was
-    # skipped for hours), the split guarantees each candidate still
-    # has its "did the bot answer this?" context visible to Phase 2 —
-    # a single monolithic "first N since earliest" query would drop
-    # later candidates' context whenever >N messages happened between
-    # the earliest and the latest.
-    # Half-cap per slice, floored at 1 so CONTEXT_CAP=1 still fetches
-    # something. The final `context_rows[-CONTEXT_CAP:]` slice below is
-    # the hard cap that keeps `len(conversation_since) <= context_cap`
-    # invariant — this floor is only about making each slice non-empty.
-    slice_cap = max(CONTEXT_CAP // 2, 1)
-    head_rows = conn.execute(
-        """
-        SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
-        FROM messages
-        WHERE chat_jid = ?
-          AND timestamp >= ?
-        ORDER BY timestamp ASC
-        LIMIT ?
-        """,
-        (CHAT_JID, earliest_orphan_ts, slice_cap),
-    ).fetchall()
-    tail_rows = conn.execute(
-        """
-        SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
-        FROM messages
-        WHERE chat_jid = ?
-          AND timestamp >= ?
-        ORDER BY timestamp ASC
-        LIMIT ?
-        """,
-        (CHAT_JID, latest_orphan_ts, slice_cap),
-    ).fetchall()
-    # Dedup by id, preserve chronological order.
-    seen_ids = set()
-    context_rows = []
-    for r in head_rows + tail_rows:
-        if r[0] in seen_ids:
-            continue
-        seen_ids.add(r[0])
-        context_rows.append(r)
-    # Stable tie-break by id when timestamps collide. SQLite message
-    # timestamps are second-precision in some paths, and two messages
-    # that arrive within the same second will both sort-compare equal
-    # on the timestamp alone. Python's sort is stable, but insertion
-    # order here comes from head+tail concatenation — not useful for
-    # Phase 2. Pairing `(ts, id)` gives deterministic order across
-    # runs regardless of how the rows were fetched.
-    context_rows.sort(key=lambda r: (r[3], r[0]))
-    # Final hard cap at CONTEXT_CAP. `slice_cap = max(CONTEXT_CAP//2,
-    # 50)` keeps each slice useful, but when CONTEXT_CAP is overridden
-    # low (e.g. 20) the head+tail unioned total can exceed the
-    # configured cap — which contradicts what `context_cap` reports.
-    # Clip here so `len(conversation_since) <= context_cap` always
-    # holds, and Phase 2's token/cost budget matches the operator's
-    # intent. Keep the LATEST messages on tie (slicing by `[-cap:]`)
-    # — they're the ones most likely to contain an inline answer.
+    # Per-candidate context: for EACH candidate we fetch the first K
+    # messages from its timestamp onward. K is CONTEXT_CAP /
+    # num_candidates (floored at 10 so even a many-candidate run gives
+    # each one some usable context). Dedup by id, sort chronologically
+    # with a stable tie-breaker, then hard-cap at CONTEXT_CAP.
+    #
+    # Previous strategies (single "first N since earliest" slice;
+    # two-slice earliest+latest union) could leave MIDDLE candidates
+    # in a spread-out set with no immediate-aftermath context, which
+    # is exactly the evidence Phase 2 reasoning needs. Per-candidate
+    # slicing costs num_candidates queries but guarantees every
+    # candidate has at least K rows after it in the window.
+    per_cand = max(CONTEXT_CAP // max(len(results), 1), 10)
+    context_rows_by_id: dict[object, tuple] = {}
+    for cand in results:
+        rows = conn.execute(
+            """
+            SELECT id, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_message_id
+            FROM messages
+            WHERE chat_jid = ?
+              AND timestamp >= ?
+            -- Stable tie-break by id so the LIMIT window is
+            -- deterministic when timestamps tie at second precision.
+            -- Without it, which rows make it into the per-candidate
+            -- slice under ties is undefined and can intermittently
+            -- drop the bot message that addressed the candidate.
+            ORDER BY timestamp ASC, id ASC
+            LIMIT ?
+            """,
+            (CHAT_JID, cand["timestamp"], per_cand),
+        ).fetchall()
+        for r in rows:
+            context_rows_by_id[r[0]] = r
+    context_rows = sorted(
+        context_rows_by_id.values(), key=lambda r: (r[3], r[0])
+    )
+    # Final hard cap at CONTEXT_CAP: honors the operator-configured
+    # upper bound regardless of how the per-candidate slices unioned.
+    # Keep the LATEST rows on tie (slicing by `[-cap:]`) — newer
+    # evidence is more likely to contain an inline answer Phase 1's
+    # SQL filter missed.
     if len(context_rows) > CONTEXT_CAP:
         context_rows = context_rows[-CONTEXT_CAP:]
     conversation_since = [
@@ -274,11 +264,4 @@ else:
 
 conn.close()
 
-print(json.dumps({
-    "unanswered": results,
-    "conversation_since": conversation_since,
-    "chat_jid": CHAT_JID,
-    "lookback_hours": LOOKBACK_HOURS,
-    "context_cap": CONTEXT_CAP,
-    "checked_at": datetime.now(timezone.utc).isoformat()
-}))
+print(json.dumps(_make_payload(results, conversation_since, None)))

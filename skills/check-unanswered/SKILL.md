@@ -15,11 +15,11 @@ python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswer
 
 Output JSON fields:
 - `unanswered`: Phase-1 candidates — user messages matching the SQL filter (no bot reply, no bot reaction).
-- `conversation_since`: chat messages chronologically around the candidates, so Phase 2 can judge inline answers. Internally, this is the deduped union of `context_cap/2` messages from the earliest candidate and `context_cap/2` from the latest — the typical close-together case collapses to one window, and the spread-out case keeps each candidate's immediate aftermath visible. Each entry: `{id, sender_name, content, timestamp, from_bot, reply_to_id}`. Default `context_cap`: 200.
+- `conversation_since`: chat messages Phase 2 should scan chronologically to judge inline answers. Internally, this is a deduped union of per-candidate slices: for `N = len(unanswered)` candidates, the script allocates roughly `K = context_cap / N` messages per candidate (minimum 10), takes each candidate's local chronological slice starting at its own `(timestamp, id)` position, merges/dedupes by id, and hard-caps the final result at `context_cap` (keeping the LATEST rows on tie, since newer evidence is more likely to contain an inline answer). This keeps immediate post-candidate context for every candidate — including middle ones in a spread-out set — instead of only the earliest/latest windows. Each entry: `{id, sender_name, content, timestamp, from_bot, reply_to_id}`. Default `context_cap`: 200.
 - `chat_jid`, `lookback_hours`, `context_cap`, `checked_at`: metadata.
-- `error` (only on failure paths): short string describing what went wrong (missing `NANOCLAW_CHAT_JID`, DB open failure, etc.). The script also exits non-zero in this case, so the precheck wrapper surfaces the failure rather than treating it as "no unanswered messages."
+- `error`: always present in the output. `null` on success; a short string on failure (missing `NANOCLAW_CHAT_JID`, DB open failure, env-var parse error, etc.). The script also exits non-zero on hard failures so the precheck wrapper surfaces the issue instead of treating it as "no unanswered messages."
 
-**Stop condition:** only stop if `unanswered` is empty AND no `error` is present. If `error` is set, report it (don't silently treat as "nothing to do") — the heartbeat is mis-wired or the DB is sick.
+**Stop condition:** only stop if `unanswered` is empty AND `error` is `null`. If `error` is non-null, report it (don't silently treat as "nothing to do") — the heartbeat is mis-wired or the DB is sick.
 
 ## Step 2: Per-candidate Phase 2 reasoning
 

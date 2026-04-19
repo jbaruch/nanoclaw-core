@@ -28,19 +28,32 @@ Every key is present on both success and error paths so downstream
 consumers (unanswered-precheck.py, the skill) can parse uniformly —
 check `error` for truthiness to distinguish.
 
-`unanswered` is the Phase-1 candidate set (same as before).
+`unanswered` is the Phase-1 candidate set.
+
 `conversation_since` is a chronologically-ordered, deduplicated union
-of per-candidate slices: for EACH candidate we fetch the first K
-messages starting at its timestamp, where K = CONTEXT_CAP /
-num_candidates (floored at 10). Messages that appear in multiple
-candidates' slices collapse via id-dedup. This guarantees every
-candidate — including middle ones in a spread-out set — has its
-immediate aftermath in-window, which is where an inline bot answer
-would land. A final hard cap at `CONTEXT_CAP` keeps
-`len(conversation_since) <= context_cap` as a firm invariant; if the
-union exceeds the cap (very active chat + many candidates), we keep
-the LATEST rows, because newer evidence is more likely to contain
-answers Phase 1's filter missed. CONTEXT_CAP defaults to 200.
+of per-candidate slices: for EACH candidate we collect the first K
+messages at or after its (timestamp, id) position, where
+K = CONTEXT_CAP / num_candidates (floored at 10). Messages that
+appear in multiple candidates' slices collapse via id-dedup.
+
+Coverage caveat — this is an aspirational "each candidate gets its
+immediate aftermath" design, not a hard guarantee:
+  - The final CONTEXT_CAP truncation drops the earliest slice rows
+    when the union exceeds the cap, so a very-early candidate whose
+    aftermath sits at the front of the union can lose context. This
+    is the right trade: an inline answer is overwhelmingly more
+    likely to appear in the LATEST slice (a recent bot message
+    acknowledging an older question) than in pre-other-candidate
+    clutter, so `[-CONTEXT_CAP:]` keeps the evidence most likely to
+    flip Phase 1 candidates to "already addressed."
+  - The bulk-fetch path has a row LIMIT scaled to `per_cand * N`;
+    if a chat is so active that the last candidate's row sits
+    outside that window, we fall back to a targeted SQL query per
+    uncovered candidate. Correctness is preserved; performance
+    degrades toward the original N+1 only in the pathological
+    very-active-chat case.
+
+CONTEXT_CAP defaults to 200.
 """
 
 import bisect
@@ -260,13 +273,55 @@ if results:
     # so positions line up exactly.
     row_keys = [(r[3], r[0]) for r in all_rows]
     context_rows_by_id: dict[object, tuple] = {}
+    # Candidates whose row wasn't in the bulk fetch (because `fetch_limit`
+    # cut off before their position in the chat). Those get a targeted
+    # per-candidate query below. Common case is 0 uncovered — the bulk
+    # fetch covers everything — so this stays a single-query flow
+    # unless the chat is busy enough to blow past fetch_limit.
+    uncovered: list[dict] = []
     for cand in results:
         c_key = (cand["timestamp"], cand["id"])
         start = bisect.bisect_left(row_keys, c_key)
+        if start >= len(row_keys):
+            # Bisect landed past the end of all_rows — the bulk fetch
+            # stopped before reaching this candidate's position. Without
+            # the fallback below, this candidate would get an empty
+            # context slice and Phase 2 would have no evidence to reason
+            # from, degrading to blind "true unanswered" for a row that
+            # might have been addressed inline.
+            uncovered.append(cand)
+            continue
         # Slice [start : start+per_cand]; Python handles out-of-range
         # gracefully (empty if start >= len, short if near the end).
         for r in all_rows[start : start + per_cand]:
             context_rows_by_id[r[0]] = r
+
+    # Targeted per-candidate fallback for the uncovered set. At most
+    # `len(uncovered)` extra SQL queries — zero in the typical case,
+    # strictly less than `len(results)` even in the worst case (any
+    # candidate whose row WAS in all_rows was already handled above).
+    for cand in uncovered:
+        rows = conn.execute(
+            """
+            SELECT id, sender_name, content, timestamp, is_from_me,
+                   is_bot_message, reply_to_message_id
+            FROM messages
+            WHERE chat_jid = ?
+              AND (timestamp > ? OR (timestamp = ? AND id >= ?))
+            ORDER BY timestamp ASC, id ASC
+            LIMIT ?
+            """,
+            (
+                CHAT_JID,
+                cand["timestamp"],
+                cand["timestamp"],
+                cand["id"],
+                per_cand,
+            ),
+        ).fetchall()
+        for r in rows:
+            context_rows_by_id[r[0]] = r
+
     context_rows = sorted(
         context_rows_by_id.values(), key=lambda r: (r[3], r[0])
     )

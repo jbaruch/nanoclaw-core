@@ -82,35 +82,49 @@ def main():
     # candidate. Write to a temp file in the same dir, fsync, then
     # os.replace (atomic rename on POSIX) so readers see either the
     # old file or the complete new file, never a partial one.
-    os.makedirs(SEEN_STATE_DIR, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        prefix='.unanswered-seen-', dir=SEEN_STATE_DIR
-    )
+    #
+    # On failure, surface via wake-JSON rather than raising. An
+    # unhandled exception here would crash the precheck, the runner
+    # would yield scriptResult=null, and the scheduler would skip
+    # waking the agent entirely — the exact "silent precheck failure"
+    # this script exists to prevent. The catch is scoped to OSError
+    # (covers makedirs/mkstemp/fdopen/write/fsync/replace/unlink) so
+    # real bugs still crash visibly.
     try:
-        # Hand ownership of fd to a file object. If os.fdopen itself
-        # raises before wrapping completes, fd is still open and would
-        # leak via the outer except (which only unlinks tmp_path). The
-        # inner try/except closes fd on that narrow failure path.
+        os.makedirs(SEEN_STATE_DIR, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix='.unanswered-seen-', dir=SEEN_STATE_DIR
+        )
         try:
-            f = os.fdopen(fd, 'w')
+            # Hand ownership of fd to a file object. If os.fdopen
+            # itself raises before wrapping completes, fd is still
+            # open and would leak. Close it explicitly on that narrow
+            # path before re-raising into the outer handler.
+            try:
+                f = os.fdopen(fd, 'w')
+            except BaseException:
+                os.close(fd)
+                raise
+            with f:
+                json.dump(current_ids, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, SEEN_FILE)
         except BaseException:
-            os.close(fd)
+            # Best-effort cleanup of the temp file on any inner
+            # failure, then re-raise to the outer OSError handler (or
+            # propagate non-OSError up if something else went wrong).
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
             raise
-        with f:
-            json.dump(current_ids, f)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, SEEN_FILE)
-    except BaseException:
-        # Re-raise after best-effort cleanup of the temp file. Never
-        # swallow the error — a failed write here is a real problem
-        # that should surface rather than silently leaving SEEN_FILE
-        # stale.
-        try:
-            os.unlink(tmp_path)
-        except FileNotFoundError:
-            pass
-        raise
+    except OSError as e:
+        print(json.dumps({
+            "wakeAgent": True,
+            "data": {"error": f"seen-file write failed: {e}"},
+        }))
+        return
 
     # Find genuinely new messages
     prev_set = set(prev_ids)

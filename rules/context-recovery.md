@@ -20,21 +20,20 @@ You **MUST** first run:
 ```python
 import os, sqlite3
 conn = sqlite3.connect('/workspace/store/messages.db')
+keyword = 'KEYWORD'  # replace with a relevant term from what the user is referencing
 rows = conn.execute("""
     SELECT id, timestamp, sender_name, content, is_from_me
     FROM messages
     WHERE chat_jid = ?
-      AND content LIKE '%KEYWORD%'
+      AND content LIKE '%' || ? || '%'
     ORDER BY timestamp DESC
     LIMIT 20
-""", (os.environ['NANOCLAW_CHAT_JID'],)).fetchall()
+""", (os.environ['NANOCLAW_CHAT_JID'], keyword)).fetchall()
 for r in rows: print(r)
 conn.close()
 ```
 
-`NANOCLAW_CHAT_JID` is always set in the container env — use it. Picking a chat with `SELECT jid FROM chats LIMIT 1` returns whatever row SQLite surfaces first, which in a multi-group deployment silently queries the wrong chat.
-
-Replace `KEYWORD` with a relevant term from what the user is referencing.
+`NANOCLAW_CHAT_JID` is always set in the container env — use it. Picking a chat with `SELECT jid FROM chats LIMIT 1` returns whatever row SQLite surfaces first, which in a multi-group deployment silently queries the wrong chat. And always bind the keyword as a parameter, never interpolate it into the query string — user text may contain quotes that break the SQL or broaden the match unexpectedly.
 
 ## Database schema (quick reference)
 

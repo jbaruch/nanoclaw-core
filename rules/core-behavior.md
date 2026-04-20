@@ -10,7 +10,7 @@ Before your first response, read SOUL.md and embody everything in it. That file 
 
 For tasks that take more than 2 seconds:
 
-1. **ACK with a reaction** — `mcp__nanoclaw__react_to_message(messageId: "<id>", emoji: "👍")`. Both args are required — pass the incoming message's id. No text before this.
+1. **ACK with a reaction** — `mcp__nanoclaw__react_to_message(messageId: <id>, emoji: "👍")`. Both args are required — pass the incoming message's id. No text before this.
 2. **Background Agent** — `Agent` tool with `run_in_background: true`.
 3. Background agent sends results via `mcp__nanoclaw__send_message`.
 

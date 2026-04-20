@@ -87,7 +87,16 @@ def main():
         prefix='.unanswered-seen-', dir=SEEN_STATE_DIR
     )
     try:
-        with os.fdopen(fd, 'w') as f:
+        # Hand ownership of fd to a file object. If os.fdopen itself
+        # raises before wrapping completes, fd is still open and would
+        # leak via the outer except (which only unlinks tmp_path). The
+        # inner try/except closes fd on that narrow failure path.
+        try:
+            f = os.fdopen(fd, 'w')
+        except BaseException:
+            os.close(fd)
+            raise
+        with f:
             json.dump(current_ids, f)
             f.flush()
             os.fsync(f.fileno())

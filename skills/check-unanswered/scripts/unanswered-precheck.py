@@ -68,6 +68,16 @@ def main():
         return
     current_ids = sorted(str(m['id']) for m in unanswered)
 
+    # Soft env-var warnings ride in data['error'] with an `env-warning:`
+    # prefix — the script exited 0 but wants operators to notice a
+    # config typo. Carry it into our own payload so the scheduler sees
+    # it in the wake payload instead of having to tail container logs;
+    # stderr is swallowed by capture_output=True on the success path.
+    # Hard errors exit non-zero and are handled above, so on this code
+    # path `error` is either `None` or an env-warning string.
+    err = data.get('error')
+    env_warning = err if isinstance(err, str) and err.startswith('env-warning:') else None
+
     # Load previous seen set
     try:
         with open(SEEN_FILE) as f:
@@ -130,13 +140,18 @@ def main():
     prev_set = set(prev_ids)
     new_ids = [i for i in current_ids if i not in prev_set]
 
+    data_out: dict = {}
     if new_ids:
-        print(json.dumps({
-            "wakeAgent": True,
-            "data": {"new_count": len(new_ids), "total": len(current_ids)}
-        }))
-    else:
-        print(json.dumps({"wakeAgent": False}))
+        data_out["new_count"] = len(new_ids)
+        data_out["total"] = len(current_ids)
+    if env_warning:
+        data_out["env_warning"] = env_warning
+
+    payload: dict = {"wakeAgent": bool(new_ids)}
+    if data_out:
+        payload["data"] = data_out
+
+    print(json.dumps(payload))
 
 
 if __name__ == '__main__':

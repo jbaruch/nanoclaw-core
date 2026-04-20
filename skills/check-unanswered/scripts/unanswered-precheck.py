@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHECK_SCRIPT = os.path.join(SCRIPT_DIR, 'check-unanswered.py')
@@ -50,7 +51,22 @@ def main():
         print(json.dumps({"wakeAgent": True, "data": {"error": "bad JSON from check-unanswered"}}))
         return
 
-    current_ids = sorted(str(m['id']) for m in data.get('unanswered', []))
+    unanswered = data.get('unanswered', [])
+    # Narrow the shape: a malformed response (e.g. `unanswered` is a
+    # dict, or items are strings) would raise TypeError on `m['id']`
+    # below and crash the precheck. Since the precheck gates the
+    # scheduled wake, a crash skips the agent entirely — the exact
+    # "silent precheck failure" class this script exists to prevent.
+    # Surface the bad shape as an error-wake instead.
+    if not isinstance(unanswered, list) or not all(
+        isinstance(m, dict) and 'id' in m for m in unanswered
+    ):
+        print(json.dumps({
+            "wakeAgent": True,
+            "data": {"error": "bad unanswered shape from check-unanswered"},
+        }))
+        return
+    current_ids = sorted(str(m['id']) for m in unanswered)
 
     # Load previous seen set
     try:
@@ -59,12 +75,56 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         prev_ids = []
 
-    # Always persist current state for next run. mkdir-with-parents is
-    # idempotent and avoids hand-written existence checks; the parent
-    # dir is created on first run, then no-op every run after.
-    os.makedirs(SEEN_STATE_DIR, exist_ok=True)
-    with open(SEEN_FILE, 'w') as f:
-        json.dump(current_ids, f)
+    # Always persist current state for next run. Atomic write: a
+    # SIGKILL / disk-full mid-`json.dump` would leave SEEN_FILE
+    # truncated, and the next run's JSONDecodeError branch resets
+    # prev_ids=[] — waking the agent spuriously for every existing
+    # candidate. Write to a temp file in the same dir, fsync, then
+    # os.replace (atomic rename on POSIX) so readers see either the
+    # old file or the complete new file, never a partial one.
+    #
+    # On failure, surface via wake-JSON rather than raising. An
+    # unhandled exception here would crash the precheck, the runner
+    # would yield scriptResult=null, and the scheduler would skip
+    # waking the agent entirely — the exact "silent precheck failure"
+    # this script exists to prevent. The catch is scoped to OSError
+    # (covers makedirs/mkstemp/fdopen/write/fsync/replace/unlink) so
+    # real bugs still crash visibly.
+    try:
+        os.makedirs(SEEN_STATE_DIR, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix='.unanswered-seen-', dir=SEEN_STATE_DIR
+        )
+        try:
+            # Hand ownership of fd to a file object. If os.fdopen
+            # itself raises before wrapping completes, fd is still
+            # open and would leak. Close it explicitly on that narrow
+            # path before re-raising into the outer handler.
+            try:
+                f = os.fdopen(fd, 'w')
+            except BaseException:
+                os.close(fd)
+                raise
+            with f:
+                json.dump(current_ids, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, SEEN_FILE)
+        except BaseException:
+            # Best-effort cleanup of the temp file on any inner
+            # failure, then re-raise to the outer OSError handler (or
+            # propagate non-OSError up if something else went wrong).
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            raise
+    except OSError as e:
+        print(json.dumps({
+            "wakeAgent": True,
+            "data": {"error": f"seen-file write failed: {e}"},
+        }))
+        return
 
     # Find genuinely new messages
     prev_set = set(prev_ids)

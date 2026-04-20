@@ -30,7 +30,9 @@ import json, datetime
 state = json.load(open('/workspace/group/session-state.json'))
 started = state.get('container_started')
 if started:
-    age = datetime.datetime.utcnow() - datetime.datetime.fromisoformat(started.replace('Z',''))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    started_dt = datetime.datetime.fromisoformat(started.replace('Z', '+00:00'))
+    age = now - started_dt
     print(f"{age.days}d {age.seconds // 3600}h (since {started})")
 else:
     print("unknown")

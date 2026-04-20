@@ -18,21 +18,25 @@ Before responding with any variant of:
 You **MUST** first run:
 
 ```python
-import sqlite3
+import os, sqlite3
+chat_jid = os.environ.get('NANOCLAW_CHAT_JID')
+if not chat_jid:
+    raise RuntimeError('NANOCLAW_CHAT_JID must be set — this snippet has to run in the agent container')
+keyword = 'KEYWORD'  # replace with a relevant term from what the user is referencing
 conn = sqlite3.connect('/workspace/store/messages.db')
 rows = conn.execute("""
     SELECT id, timestamp, sender_name, content, is_from_me
     FROM messages
-    WHERE chat_jid = (SELECT jid FROM chats LIMIT 1)
-      AND content LIKE '%KEYWORD%'
+    WHERE chat_jid = ?
+      AND content LIKE '%' || ? || '%'
     ORDER BY timestamp DESC
     LIMIT 20
-""").fetchall()
+""", (chat_jid, keyword)).fetchall()
 for r in rows: print(r)
 conn.close()
 ```
 
-Replace `KEYWORD` with a relevant term from what the user is referencing.
+`NANOCLAW_CHAT_JID` is always set in the container env — use it. Picking a chat with `SELECT jid FROM chats LIMIT 1` returns whatever row SQLite surfaces first, which in a multi-group deployment silently queries the wrong chat. And always bind the keyword as a parameter, never interpolate it into the query string — user text may contain quotes that break the SQL or broaden the match unexpectedly.
 
 ## Database schema (quick reference)
 

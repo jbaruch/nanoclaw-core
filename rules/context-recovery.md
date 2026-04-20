@@ -19,8 +19,11 @@ You **MUST** first run:
 
 ```python
 import os, sqlite3
-conn = sqlite3.connect('/workspace/store/messages.db')
+chat_jid = os.environ.get('NANOCLAW_CHAT_JID')
+if not chat_jid:
+    raise RuntimeError('NANOCLAW_CHAT_JID must be set — this snippet has to run in the agent container')
 keyword = 'KEYWORD'  # replace with a relevant term from what the user is referencing
+conn = sqlite3.connect('/workspace/store/messages.db')
 rows = conn.execute("""
     SELECT id, timestamp, sender_name, content, is_from_me
     FROM messages
@@ -28,7 +31,7 @@ rows = conn.execute("""
       AND content LIKE '%' || ? || '%'
     ORDER BY timestamp DESC
     LIMIT 20
-""", (os.environ['NANOCLAW_CHAT_JID'], keyword)).fetchall()
+""", (chat_jid, keyword)).fetchall()
 for r in rows: print(r)
 conn.close()
 ```

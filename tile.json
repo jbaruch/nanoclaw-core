@@ -1,6 +1,6 @@
 {
   "name": "jbaruch/nanoclaw-core",
-  "version": "0.1.74",
+  "version": "0.1.75",
   "summary": "Core behavioral rules and skills for NanoClaw personal assistant agents. Always-on rules for communication, verification, memory, and formatting.",
   "private": false,
   "rules": {

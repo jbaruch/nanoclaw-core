@@ -18,19 +18,21 @@ Before responding with any variant of:
 You **MUST** first run:
 
 ```python
-import sqlite3
+import os, sqlite3
 conn = sqlite3.connect('/workspace/store/messages.db')
 rows = conn.execute("""
     SELECT id, timestamp, sender_name, content, is_from_me
     FROM messages
-    WHERE chat_jid = (SELECT jid FROM chats LIMIT 1)
+    WHERE chat_jid = ?
       AND content LIKE '%KEYWORD%'
     ORDER BY timestamp DESC
     LIMIT 20
-""").fetchall()
+""", (os.environ['NANOCLAW_CHAT_JID'],)).fetchall()
 for r in rows: print(r)
 conn.close()
 ```
+
+`NANOCLAW_CHAT_JID` is always set in the container env — use it. Picking a chat with `SELECT jid FROM chats LIMIT 1` returns whatever row SQLite surfaces first, which in a multi-group deployment silently queries the wrong chat.
 
 Replace `KEYWORD` with a relevant term from what the user is referencing.
 

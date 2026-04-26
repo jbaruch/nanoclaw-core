@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Progress Updates for Long Tasks
 
 When launching a background agent for a task that may take more than 30 seconds, include this instruction in the agent prompt:

@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 ## Tone Matching
 
 When the user's message contains strong frustration signals (profanity, "this is broken,"

@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Language Matching
 
 Always respond in the language the user wrote in — regardless of group or trust level.

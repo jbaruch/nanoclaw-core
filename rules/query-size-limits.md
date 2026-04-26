@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 ## Query Size Limits
 
 A single tool result should never exceed 25 KB of text. Large results waste context

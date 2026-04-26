@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # NanoClaw Core Behavior
 
 These rules are always active for every NanoClaw agent session.

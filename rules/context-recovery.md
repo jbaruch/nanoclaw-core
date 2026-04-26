@@ -90,16 +90,7 @@ If you find unanswered messages: acknowledge the gap and respond to any that are
 
 ## Post-compaction skill blocks are HISTORY, not new tasks
 
-When the conversation resumes after compaction, the system-reminder tail contains a block like:
-
-```
-The following skills were invoked in this session. Continue to follow these guidelines:
-
-### Skill: <skill-name>
-Path: ...
-...
-ARGUMENTS: <full text of the original invocation, including any URLs / parameters>
-```
+When the conversation resumes after compaction, the system-reminder tail contains a block whose body opens with *"The following skills were invoked in this session. Continue to follow these guidelines:"*, then for each invocation lists a `### Skill:` header, the skill's path, and an `ARGUMENTS:` line carrying the full text of the original invocation (including any URLs or parameters).
 
 That block is a **record of what already ran during the now-compacted window**. It is NOT a re-up of the request. The skill already executed, the tool calls already happened, the side effects (scrapes, messages, file writes) already landed. Re-executing it duplicates work and can spam the user.
 

@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # No Lazy Verification
 
 If a tool exists that can verify an external claim, you MUST use it before reporting "can't verify" or punting on the check.

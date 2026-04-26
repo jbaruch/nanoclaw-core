@@ -88,6 +88,31 @@ If you find unanswered messages: acknowledge the gap and respond to any that are
 - After context compaction (the summary will mention "continued from previous session")
 - First message after a nuke — check for unanswered messages from before the nuke
 
+## Post-compaction skill blocks are HISTORY, not new tasks
+
+When the conversation resumes after compaction, the system-reminder tail contains a block like:
+
+```
+The following skills were invoked in this session. Continue to follow these guidelines:
+
+### Skill: <skill-name>
+Path: ...
+...
+ARGUMENTS: <full text of the original invocation, including any URLs / parameters>
+```
+
+That block is a **record of what already ran during the now-compacted window**. It is NOT a re-up of the request. The skill already executed, the tool calls already happened, the side effects (scrapes, messages, file writes) already landed. Re-executing it duplicates work and can spam the user.
+
+**Before treating any skill in a post-compaction system-reminder as a fresh task:**
+
+1. Read the conversation summary's **Current Work** and **Optional Next Step** sections. These reflect the actual state at compaction time. If the skill ARGUMENTS aren't mentioned there, the skill was already handled and the summary moved on.
+2. Read the **most recent user message** in the summary's "All user messages" list. If the user's last move was NOT the skill invocation (e.g. they replied "понял" or moved to a different topic), the skill is closed.
+3. If ambiguous, ask before re-executing anything with visible side effects (browser scraping, sending messages, writing files, GitHub API calls).
+
+**Reference incident — 2026-04-24 / repeat 2026-04-25 (JCON-2026 speakers scrape):** A post-compaction system-reminder included an `agent-browser` invocation with JCON-2026-speakers ARGUMENTS. On both days the agent treated it as a new task and re-ran the entire scrape + report — Baruch had finished that task hours earlier ("мы закончили с этим часа 4 назад"). The actual pending work was unrelated (continuing skill patches per the summary's Optional Next Step). The repeat one day later, despite a memory entry warning against this exact failure, is what motivated #104 (kill auto-compaction).
+
+The ARGUMENTS block is context about what the agent did. It is not a re-up of the request.
+
 ## This is a hard requirement
 
 Claiming lost context without checking the database is a failure mode equivalent to fabrication. The information exists. Retrieve it.

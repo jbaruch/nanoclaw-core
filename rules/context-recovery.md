@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Context Recovery — Never Lose History
 
 ## The Rule

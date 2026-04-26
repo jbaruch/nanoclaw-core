@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Temporal Awareness
 
 Before any proactive action — reminder, alert, message, suggestion — ground yourself in time first.

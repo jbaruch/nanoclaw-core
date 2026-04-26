@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Read Full Content Before Deciding
 
 When making any decision based on external content — email body, web page, document, message thread — **always read the complete content**. Never base a decision on a preview, snippet, truncated summary, or subject line alone.

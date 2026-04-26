@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Ground Truth — Verify Before Claiming
 
 Any factual claim must be backed by a live check. Never synthesize answers from memory, conversation history, or prior context when the ground truth is verifiable.

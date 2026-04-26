@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Telegram Communication Protocol
 
 Always-on rules for interacting in Telegram chats.

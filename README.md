@@ -26,7 +26,6 @@ tessl install jbaruch/nanoclaw-core
 | [tone-matching](rules/tone-matching.md) | Mirror the user's register; tone shifts signal mode shifts |
 | [query-size-limits](rules/query-size-limits.md) | Bounded SQL/API queries; never SELECT * on large tables |
 | [progress-updates](rules/progress-updates.md) | Brief updates at key moments; silence is not a failure |
-| [no-lazy-verification](rules/no-lazy-verification.md) | If a tool can verify a claim, use it before reporting "can't verify"; banned excuses include "site is JS-rendered" and "page is empty" |
 
 ## Skills
 

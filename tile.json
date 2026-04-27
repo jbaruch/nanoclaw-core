@@ -40,9 +40,6 @@
     },
     "progress-updates": {
       "rules": "rules/progress-updates.md"
-    },
-    "no-lazy-verification": {
-      "rules": "rules/no-lazy-verification.md"
     }
   },
   "skills": {

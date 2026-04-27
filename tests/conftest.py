@@ -14,7 +14,15 @@ def _load(name: str, relpath: str):
     imported normally. Each call returns a fresh module instance so
     tests that monkeypatch module-level constants (CHAT_JID, DB) don't
     leak state across tests."""
-    spec = importlib.util.spec_from_file_location(name, REPO_ROOT / relpath)
+    path = REPO_ROOT / relpath
+    spec = importlib.util.spec_from_file_location(name, path)
+    # Explicit check: a typo/rename in `relpath` returns `spec=None` (or
+    # `spec.loader=None` for some loader configs); the bare-attribute
+    # path crashes inside `module_from_spec` / `exec_module` with a
+    # confusing `AttributeError`. A clear ImportError makes test-load
+    # failures diagnose at a glance which fixture is misconfigured.
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module {name!r} from {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

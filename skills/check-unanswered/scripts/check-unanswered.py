@@ -58,12 +58,13 @@ import json
 import sys
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Optional, Tuple
 
 DB = os.environ.get('NANOCLAW_DB', '/workspace/store/messages.db')
 CHAT_JID = os.environ.get('NANOCLAW_CHAT_JID', '')
 
 
-def _parse_int_env(name: str, default: int) -> tuple[int, str | None]:
+def _parse_int_env(name: str, default: int) -> Tuple[int, Optional[str]]:
     """Parse an integer env var, returning (value, error). On invalid
     input we fall back to `default` AND surface the original input in
     the error string so the caller can emit it to stderr — without
@@ -117,7 +118,7 @@ if _env_errors:
 _ENV_WARN_PREFIX = "env-warning: "
 
 
-def _merge_env_warnings(primary: str | None) -> str | None:
+def _merge_env_warnings(primary: Optional[str]) -> Optional[str]:
     """Thread any env-parse warnings into the payload's `error` field
     alongside a hard error (if any). Primary hard error wins position;
     env warnings trail. On pure-success (primary=None, no env errors)
@@ -135,7 +136,7 @@ def _merge_env_warnings(primary: str | None) -> str | None:
 def _make_payload(
     unanswered: list,
     conversation_since: list,
-    error: str | None,
+    error: Optional[str],
 ):
     """Build the single canonical output shape. Used by both the happy
     path (error=None, no env warnings → `error` serializes as `null`)

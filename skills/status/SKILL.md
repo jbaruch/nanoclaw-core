@@ -31,7 +31,12 @@ state = json.load(open('/workspace/group/session-state.json'))
 started = state.get('container_started')
 if started:
     now = datetime.datetime.now(datetime.timezone.utc)
-    started_dt = datetime.datetime.fromisoformat(started.replace('Z', '+00:00'))
+    # endswith-slice instead of `.replace("Z", ...)` — `.replace`
+    # would corrupt any timestamp that contains 'Z' inside a numeric
+    # offset (`+0Z00`-style malformed strings) or in microsecond
+    # precision. The 'Z' suffix is positional; treat it that way.
+    iso = started[:-1] + '+00:00' if started.endswith('Z') else started
+    started_dt = datetime.datetime.fromisoformat(iso)
     age = now - started_dt
     print(f"{age.days}d {age.seconds // 3600}h (since {started})")
 else:

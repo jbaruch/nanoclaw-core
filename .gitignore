@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+
+# Build / dist
+build/
+dist/
+
+# Node / vendored deps (defensive — none currently in tree, but
+# common cross-cutting clutter when scripts grow toolchains)
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~

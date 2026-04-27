@@ -3,7 +3,11 @@
 Two-phase unanswered message detector.
 
 Phase 1 (deterministic SQL): find user messages that have neither a
-threaded bot reply nor a bot reaction. Fast, cheap, no LLM.
+threaded bot reply nor a bot reaction. Fast, cheap, no LLM. A grace
+window (default 60s, env `CHECK_UNANSWERED_GRACE_SECONDS`) excludes
+very-recent messages so an in-flight bot reply has time to commit
+before the message becomes a Phase-1 candidate — closes the
+heartbeat-vs-reply race documented in #18.
 
 Phase 2 (LLM-assisted, in the skill): for each candidate, reason over
 the conversation between that message and now to decide whether the
@@ -145,6 +149,22 @@ def _empty_payload(
 def main() -> int:
     lookback_hours, lb_err = _parse_int_env('LOOKBACK_HOURS', 24)
     context_cap, cc_err = _parse_int_env('CONTEXT_CAP', 200)
+    # Grace window — exclude messages younger than `grace_seconds` from
+    # the candidate set. Closes the heartbeat-vs-bot-reply race
+    # documented in #18: when the bot is mid-reply (or about to react)
+    # and the heartbeat lands in the window before the threaded reply /
+    # reaction commits, Phase 1's SQL would otherwise flag the message
+    # as unanswered, the agent wakes, and a duplicate reply ships. The
+    # grace window lets the in-flight reply land before the message
+    # becomes eligible. Mirrors the upstream `SWEEP_INTERVAL_MS=60000`
+    # behavior in qwibitai/nanoclaw `src/host-sweep.ts`.
+    grace_seconds, gs_err = _parse_int_env('CHECK_UNANSWERED_GRACE_SECONDS', 60)
+    if grace_seconds < 0:
+        gs_err = (
+            (gs_err + ' | ' if gs_err else '')
+            + f"CHECK_UNANSWERED_GRACE_SECONDS={grace_seconds} is negative; clamping to 0"
+        )
+        grace_seconds = 0
     # Clamp non-positive CONTEXT_CAP up to 1 so downstream slicing stays
     # sensible (Python's negative-index semantics would otherwise turn
     # `context_rows[-0:]` into "keep everything" and `context_rows[-(-5):]`
@@ -158,7 +178,7 @@ def main() -> int:
             + f"CONTEXT_CAP={context_cap} is non-positive; clamping to 1"
         )
         context_cap = 1
-    env_errors = [e for e in (lb_err, cc_err) if e]
+    env_errors = [e for e in (lb_err, cc_err, gs_err) if e]
     if env_errors:
         # Non-fatal — defaults are safe and the script still produces
         # useful output. Two surface paths, each with a different audience:
@@ -195,7 +215,9 @@ def main() -> int:
         print(json.dumps(_empty_payload(err, lookback_hours, context_cap, env_errors)))
         return 1
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).strftime('%Y-%m-%dT%H:%M:%S')
+    now_utc = datetime.now(timezone.utc)
+    cutoff = (now_utc - timedelta(hours=lookback_hours)).strftime('%Y-%m-%dT%H:%M:%S')
+    grace_cutoff = (now_utc - timedelta(seconds=grace_seconds)).strftime('%Y-%m-%dT%H:%M:%S')
 
     # Single try/finally covering BOTH `sqlite3.connect` and every
     # downstream `.execute()` — locked/busy DB on open, locked mid-query,
@@ -237,6 +259,12 @@ def main() -> int:
               AND m.is_from_me = 0
               AND m.is_bot_message = 0
               AND m.timestamp > ?
+              -- Grace window per #18: skip messages younger than
+              -- CHECK_UNANSWERED_GRACE_SECONDS so an in-flight reply
+              -- has time to commit before the message becomes a
+              -- candidate. Closes the heartbeat-vs-reply race that
+              -- caused duplicate-reply incidents.
+              AND m.timestamp < ?
               AND NOT EXISTS (
                 SELECT 1 FROM messages r
                 WHERE r.chat_jid = m.chat_jid
@@ -255,7 +283,7 @@ def main() -> int:
             -- and results[-1] as "earliest/latest candidate" for context-
             -- window planning; a stable order keeps those picks reproducible.
             ORDER BY m.timestamp ASC, m.id ASC
-        """, (CHAT_JID, cutoff)).fetchall()
+        """, (CHAT_JID, cutoff, grace_cutoff)).fetchall()
 
         results = [
             {"id": msg_id, "sender_name": sender, "content": content, "timestamp": ts}

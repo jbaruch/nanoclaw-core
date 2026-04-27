@@ -58,7 +58,7 @@ React → work → deliver result. Do NOT hold the user hostage with a reply tha
 
 For bullets use `•` (not `-` or `*`). For emphasis in lists, combine: `• <b>Item</b> — description`.
 
-Special characters in user data: only `<`, `>`, and `&` need HTML-entity escaping (`&lt;`, `&gt;`, `&amp;`). Apostrophes (`'`) and double quotes (`"`) pass through raw — do NOT escape them as `&apos;` / `&quot;`. Telegram's HTML parse mode does not decode those entities; users see the literal `&apos;` / `&quot;` in the rendered message. Reference incident: 2026-04-26 untrusted group msg 1116, where `Baruch&apos;s Office` and `someone&apos;s tracing` rendered verbatim.
+Special characters in user data: only `<`, `>`, and `&` need HTML-entity escaping (`&lt;`, `&gt;`, `&amp;`). Apostrophes (`'`) and double quotes (`"`) pass through raw — do NOT escape them as `&apos;` / `&quot;`. Telegram's HTML parse mode does not decode those entities; users see the literal `&apos;` / `&quot;` in the rendered message. Reference incident: 2026-04-26 untrusted group msg 1116, where `Owner&apos;s Office` and `someone&apos;s tracing` rendered verbatim.
 
 **Forbidden patterns** (alongside the Markdown ban list above):
 

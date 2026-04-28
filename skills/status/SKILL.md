@@ -23,20 +23,9 @@ echo "Channel: main"
 
 ### 2. Container uptime
 
-Compute container uptime from `/.dockerenv` mtime — this file is created at container spawn time and exists in every container regardless of trust tier, so reading it works on untrusted, trusted, and main alike. No external state file required.
+Run `python3 /home/node/.claude/skills/tessl__status/scripts/container-uptime.py` — outputs single-line JSON `{"uptime_text": "<Nd Hh (since ISO8601)>", "started": "<ISO8601>"}`. Use the `uptime_text` field as the rendered line. On a non-container host (no `/.dockerenv`), `uptime_text` is `"unknown"` and `started` is `null`.
 
-```python
-import datetime, os
-try:
-    epoch = os.path.getmtime('/.dockerenv')
-except OSError:
-    print("unknown")
-else:
-    started_dt = datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc)
-    started = started_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-    age = datetime.datetime.now(datetime.timezone.utc) - started_dt
-    print(f"{age.days}d {age.seconds // 3600}h (since {started})")
-```
+Reads `/.dockerenv` mtime, which Docker creates at container spawn time. Cross-tier safe — the file exists in every container regardless of trust level, so this works on untrusted, trusted, and main alike with no external state file.
 
 ### 3. Workspace and mount visibility
 

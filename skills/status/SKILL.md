@@ -23,7 +23,13 @@ echo "Channel: main"
 
 ### 2. Container uptime
 
-Run `python3 /home/node/.claude/skills/tessl__status/scripts/container-uptime.py` — outputs single-line JSON `{"uptime_text": "<Nd Hh (since ISO8601)>", "started": "<ISO8601>"}`. Use the `uptime_text` field as the rendered line. On a non-container host (no `/.dockerenv`), `uptime_text` is `"unknown"` and `started` is `null`.
+Run the `container-uptime.py` script (`scripts/container-uptime.py` relative to this skill, mounted into the agent at `/home/node/.claude/skills/tessl__status/scripts/container-uptime.py` — the absolute path matches every other `tessl__*` skill in this tile and is what the agent must literally invoke):
+
+```bash
+python3 /home/node/.claude/skills/tessl__status/scripts/container-uptime.py | python3 -c 'import json,sys; print(json.load(sys.stdin)["uptime_text"])'
+```
+
+The script outputs single-line JSON `{"uptime_text": "<Nd Hh (since ISO8601)>", "started": "<ISO8601>"}`. The pipe extracts `uptime_text` for direct rendering. On a non-container host (no `/.dockerenv`), `uptime_text` is `"unknown"` and `started` is `null`.
 
 Reads `/.dockerenv` mtime, which Docker creates at container spawn time. Cross-tier safe — the file exists in every container regardless of trust level, so this works on untrusted, trusted, and main alike with no external state file.
 

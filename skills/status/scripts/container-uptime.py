@@ -14,13 +14,15 @@ Output (single-line JSON to stdout):
                             on a dev host outside a container)
 
 Exit codes:
-    0 — always. The missing-/.dockerenv case is an expected
-        non-container environment, not a failure; the JSON payload
-        signals it via `started: null`.
+    0 — success path: container present (`/.dockerenv` exists) OR the
+        expected non-container environment (missing `/.dockerenv`,
+        signalled via `started: null` in the JSON payload).
+    >0 — unexpected error (e.g. permissions, OS-level fault). The
+        Python traceback propagates to stderr per
+        `jbaruch/coding-policy: error-handling`; we do NOT swallow
+        unexpected exceptions.
 
-Stderr is unused on the happy path. Unexpected errors propagate as
-non-zero exits with the Python traceback on stderr (per
-`jbaruch/coding-policy: error-handling`).
+Stderr is unused on the happy path.
 """
 import datetime
 import json

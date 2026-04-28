@@ -46,3 +46,14 @@ def check_unanswered():
         "check_unanswered_under_test",
         "skills/check-unanswered/scripts/check-unanswered.py",
     )
+
+
+@pytest.fixture
+def container_uptime():
+    """Fresh-loaded module under test for the status skill's
+    container-uptime script. Per-test reload keeps tests independent
+    even though this module reads no module-level env."""
+    return _load(
+        "container_uptime_under_test",
+        "skills/status/scripts/container-uptime.py",
+    )

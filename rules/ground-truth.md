@@ -26,6 +26,20 @@ Before stating that something is true, check:
 
 Never claim a tool ran, a task was scheduled, a file changed, or memory was saved unless the corresponding tool call succeeded. If something didn't work and you don't know why, say "I don't know why it failed" — never fabricate an explanation.
 
+## Verifying after a state change
+
+The tool call returning success means the tool ran — not that the outcome is what you intended. After any state-mutating call (file write, task schedule, memory update, IPC send, API call), verify the outcome independently:
+
+| Action | How to verify |
+|---|---|
+| File write | `Read` the file back; compare to intent |
+| Task schedule | Read `current_tasks.json`; confirm the task appears with the right schedule |
+| API call (Composio, etc.) | Check both response status AND body — a 200 doesn't mean the data is correct |
+| Memory update | `Read` the memory file back; confirm the content matches |
+| IPC send | Confirm the file exists in `/workspace/ipc/messages/` with the expected payload |
+
+Stale memory is a special case of "world changed since you last looked": before acting on a recalled value (file path, task state, deploy freeze, config flag), verify against the live source. Memories are hints, not facts. If the memory contradicts what you observe, trust observation and update the memory.
+
 ## Why this matters
 
 LLMs synthesize plausible-sounding answers from prior context. This produces confident, wrong reports. Whether the question is about tile inventory, scheduled tasks, file contents, or past actions — the model's memory of what *should* be there is not the same as what *is* there.

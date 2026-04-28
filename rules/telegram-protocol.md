@@ -8,7 +8,7 @@ Always-on rules for interacting in Telegram chats.
 
 ## Acknowledgement
 
-The runtime reacts on first touch (👀) via the `react-first` UserPromptSubmit hook in the agent-runner — see `qwibitai/nanoclaw#136`. You do **not** need to call `react_to_message` to acknowledge receipt. Use it only when you want a more specific reaction *after* you've inspected the message:
+The runtime reacts on first touch (👀) via the `react-first` UserPromptSubmit hook in the agent-runner — see `jbaruch/nanoclaw#136`. You do **not** need to call `react_to_message` to acknowledge receipt. Use it only when you want a more specific reaction *after* you've inspected the message:
 
 - `👌` — got it, working on it
 - `👍` — acknowledged / done
@@ -23,7 +23,7 @@ Telegram replaces the bot's reaction on each new `react_to_message` call, so a m
 
 ## Reply threading
 
-The `reply-threading-enforcement` PreToolUse hook (`qwibitai/nanoclaw#137`) denies a standalone `send_message` while the latest user inbound is unanswered, so threading is a runtime contract. Pass `reply_to` with the message ID from the `<message id="...">` tag for any response to a user message. Carve-outs that bypass the gate: `pin: true` (status updates / daily briefings), `sender` set (multi-bot persona), maintenance / scheduled-task session.
+The `reply-threading-enforcement` PreToolUse hook (`jbaruch/nanoclaw#137`) denies a standalone `send_message` while the latest user inbound is unanswered, so threading is a runtime contract. Pass `reply_to` with the message ID from the `<message id="...">` tag for any response to a user message. Carve-outs that bypass the gate: `pin: true` (status updates / daily briefings), `sender` set (multi-bot persona), maintenance / scheduled-task session.
 
 Rule of thumb: if the user said something and you're answering → `reply_to`. If nobody asked and you're telling → standalone (e.g. scheduled-task output).
 
@@ -33,7 +33,7 @@ React → work → deliver result. Do NOT hold the user hostage with a reply tha
 
 ## Formatting
 
-Telegram parses HTML, not Markdown. The `no-markdown-in-send-message` PreToolUse hook (`qwibitai/nanoclaw#138`) auto-rewrites the four common Markdown patterns the model leaks (`**bold**` → `<b>`, `[label](url)` → `<a href>`, `` `code` `` → `<code>`, `- ` / `* ` line bullets → `•`), so the agent does not need to emit raw HTML for those four. For everything else (italic, underline, strikethrough, code blocks, blockquotes, spoilers), emit HTML directly:
+Telegram parses HTML, not Markdown. The `no-markdown-in-send-message` PreToolUse hook (`jbaruch/nanoclaw#138`) auto-rewrites the four common Markdown patterns the model leaks (`**bold**` → `<b>`, `[label](url)` → `<a href>`, `` `code` `` → `<code>`, `- ` / `* ` line bullets → `•`), so the agent does not need to emit raw HTML for those four. For everything else (italic, underline, strikethrough, code blocks, blockquotes, spoilers), emit HTML directly:
 
 | Format | HTML syntax |
 |--------|------------|

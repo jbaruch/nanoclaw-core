@@ -33,9 +33,9 @@ The tool call returning success means the tool ran — not that the outcome is w
 | Action | How to verify |
 |---|---|
 | File write | `Read` the file back; compare to intent |
-| Task schedule | Read `current_tasks.json`; confirm the task appears with the right schedule |
+| Task schedule | Check `mcp__nanoclaw__list_tasks` output (or the scheduler's authoritative state/API); confirm the task appears with the right schedule |
 | API call (Composio, etc.) | Check both response status AND body — a 200 doesn't mean the data is correct |
-| Memory update | `Read` the memory file back; confirm the content matches |
+| Memory update | Immediately query/list the memory store through the available memory interface; confirm the saved content matches |
 | IPC send | Confirm the file exists in `/workspace/ipc/messages/` with the expected payload |
 
 Stale memory is a special case of "world changed since you last looked": before acting on a recalled value (file path, task state, deploy freeze, config flag), verify against the live source. Memories are hints, not facts. If the memory contradicts what you observe, trust observation and update the memory.

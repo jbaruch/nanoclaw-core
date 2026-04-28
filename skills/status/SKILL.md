@@ -23,24 +23,19 @@ echo "Channel: main"
 
 ### 2. Container uptime
 
-Read `container_started` from `/workspace/group/session-state.json` and compute age:
+Compute container uptime from `/.dockerenv` mtime — this file is created at container spawn time and exists in every container regardless of trust tier, so reading it works on untrusted, trusted, and main alike. No external state file required.
 
 ```python
-import json, datetime
-state = json.load(open('/workspace/group/session-state.json'))
-started = state.get('container_started')
-if started:
-    now = datetime.datetime.now(datetime.timezone.utc)
-    # endswith-slice instead of `.replace("Z", ...)` — `.replace`
-    # would corrupt any timestamp that contains 'Z' inside a numeric
-    # offset (`+0Z00`-style malformed strings) or in microsecond
-    # precision. The 'Z' suffix is positional; treat it that way.
-    iso = started[:-1] + '+00:00' if started.endswith('Z') else started
-    started_dt = datetime.datetime.fromisoformat(iso)
-    age = now - started_dt
-    print(f"{age.days}d {age.seconds // 3600}h (since {started})")
-else:
+import datetime, os
+try:
+    epoch = os.path.getmtime('/.dockerenv')
+except OSError:
     print("unknown")
+else:
+    started_dt = datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc)
+    started = started_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    age = datetime.datetime.now(datetime.timezone.utc) - started_dt
+    print(f"{age.days}d {age.seconds // 3600}h (since {started})")
 ```
 
 ### 3. Workspace and mount visibility

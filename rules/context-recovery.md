@@ -6,7 +6,9 @@ alwaysApply: true
 
 ## The Rule
 
-**Never say you've lost context or forgotten a previous conversation without first querying `messages.db`.**
+**Never say you've lost context or forgotten a previous conversation without querying `messages.db` for it.**
+
+This rule is **conditional** — it fires only when the agent is about to claim lost context. It is not the per-message first action (the runtime react hook is); it operates as a gate on a specific class of replies.
 
 The full message history is always available at `/workspace/store/messages.db`. Context compaction removes it from your active context — but the database still has it. There is no excuse for "I don't remember what we discussed" when the database is a query away.
 
@@ -19,7 +21,7 @@ Before responding with any variant of:
 - "I don't have context on this topic"
 - Any acknowledgment that prior conversation is unavailable
 
-You **MUST** first run:
+You **MUST** run:
 
 ```python
 import os, sqlite3

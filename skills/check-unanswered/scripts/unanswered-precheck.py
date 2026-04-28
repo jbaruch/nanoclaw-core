@@ -7,15 +7,28 @@ If no NEW unanswered messages appeared since last check, outputs
 {"wakeAgent": false} so the scheduler skips the LLM entirely.
 
 Works for any group — uses NANOCLAW_CHAT_JID from environment (same as
-check-unanswered.py) and stores seen state under /home/node/.claude/.
-That directory is the per-session .claude/ bind mount and is always
-writable regardless of container trust tier; /workspace/group/ (the
-earlier location) is read-only for untrusted groups, which made the
-precheck silently fail with EACCES, return scriptResult=null in the
-agent-runner, and skip the LLM every tick — strictly worse than no
-precheck. Per-session scoping is fine here: scheduled tasks always
-fire in the `maintenance` session (src/task-scheduler.ts), so the
-seen-set tracks maintenance's view of this group's unanswered history.
+check-unanswered.py) and stores seen state under
+/workspace/state/check-unanswered/. That path is the per-group
+canonical writable mount available to every container regardless of
+trust tier (jbaruch/nanoclaw#99 Cat 4, host PR jbaruch/nanoclaw#220 —
+data/state/<folder>/ on the host bound at /workspace/state). Pre-#220
+this script wrote to /home/node/.claude/nanoclaw-state/ as a
+workaround because /workspace/group/ is read-only on untrusted tiers
+and any write silently EACCES'd; with /workspace/state/ available,
+the workaround is no longer needed. The "agent's persisted state,
+every tier, always RW" convention is documented in the host repo's
+docs/SPEC.md under "Container Workspace Layout"
+(https://github.com/jbaruch/nanoclaw/blob/main/docs/SPEC.md).
+
+Per-group scoping (not per-session): the seen-set tracks the group's
+unanswered history regardless of which session ran the check, so
+on-demand reruns from the user-facing session and scheduled
+maintenance fires share state. Cross-group leakage is impossible by
+virtue of the bind being scoped to <folder>.
+
+Existing seen-state at the legacy path is detected and migrated on
+first run after deploy — see migrate_legacy_seen_state below — so no
+spurious wake cycle.
 
 Usage in schedule_task script field:
     python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/unanswered-precheck.py
@@ -23,17 +36,65 @@ Usage in schedule_task script field:
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHECK_SCRIPT = os.path.join(SCRIPT_DIR, 'check-unanswered.py')
-SEEN_STATE_DIR = '/home/node/.claude/nanoclaw-state'
+SEEN_STATE_DIR = '/workspace/state/check-unanswered'
 SEEN_FILE = os.path.join(SEEN_STATE_DIR, 'unanswered-seen.json')
+
+# Legacy location used before host PR #220 landed the /workspace/state/
+# convention. Detected and migrated on first run so the freshly-deployed
+# precheck doesn't lose its seen-set and re-wake the agent for every
+# already-known unanswered message. Migration is idempotent (the legacy
+# file is removed after the move) and best-effort: a failure here just
+# falls through to the normal "no prev state -> rebuild" path, which is
+# acceptable because the seen-set is purely an optimization.
+LEGACY_SEEN_FILE = '/home/node/.claude/nanoclaw-state/unanswered-seen.json'
+
+
+def migrate_legacy_seen_state():
+    """One-shot migration from the pre-#220 path. Idempotent.
+
+    Runs once per container, before the seen-set load. If both paths
+    exist, the canonical one wins (legacy is deleted to converge); if
+    only the legacy one exists, it gets moved into place. Failures
+    surface as warnings in stderr but don't block the precheck — the
+    scheduler still gets a valid wake decision based on whichever set
+    was reachable.
+    """
+    if not os.path.exists(LEGACY_SEEN_FILE):
+        return
+    try:
+        os.makedirs(SEEN_STATE_DIR, exist_ok=True)
+        if os.path.exists(SEEN_FILE):
+            # Canonical already populated — this run is the FIRST one
+            # AFTER the canonical file was created (likely a rerun
+            # after the migration's first pass). Drop the legacy copy
+            # so subsequent runs don't keep going through this branch.
+            os.unlink(LEGACY_SEEN_FILE)
+            return
+        shutil.move(LEGACY_SEEN_FILE, SEEN_FILE)
+    except OSError as e:
+        # Don't crash the precheck on migration failure — the seen-set
+        # is a heuristic and the next run will rebuild it from the
+        # current candidate set. Surface as a stderr line so an
+        # operator tailing logs sees it.
+        print(
+            f"unanswered-precheck: legacy seen-state migration failed: {e}",
+            file=sys.stderr,
+        )
 
 
 def main():
+    # One-shot migration of pre-#220 seen-state before any read. No-op
+    # on the steady state (post-migration the legacy file is gone); no
+    # crash on failure (the seen-set is a heuristic, will rebuild).
+    migrate_legacy_seen_state()
+
     # Run check-unanswered.py
     result = subprocess.run(
         [sys.executable, CHECK_SCRIPT],

@@ -157,7 +157,7 @@ def main() -> int:
     # as unanswered, the agent wakes, and a duplicate reply ships. The
     # grace window lets the in-flight reply land before the message
     # becomes eligible. Mirrors the upstream `SWEEP_INTERVAL_MS=60000`
-    # behavior in qwibitai/nanoclaw `src/host-sweep.ts`.
+    # behavior in jbaruch/nanoclaw `src/host-sweep.ts`.
     grace_seconds, gs_err = _parse_int_env('CHECK_UNANSWERED_GRACE_SECONDS', 60)
     if grace_seconds < 0:
         gs_err = (

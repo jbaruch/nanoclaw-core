@@ -5,13 +5,13 @@ The module exposes `compute_uptime(now)` as a pure function: it takes
 a fixed `now` so tests can pin time and assert deterministic output.
 The CLI entrypoint (`main`) is just a JSON-printer wrapper.
 """
+
 import datetime
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "skills/status/scripts/container-uptime.py"
@@ -37,9 +37,7 @@ def test_missing_dockerenv_returns_unknown(container_uptime, monkeypatch):
     assert result == {"uptime_text": "unknown", "started": None}
 
 
-def test_present_dockerenv_returns_deterministic_uptime(
-    container_uptime, monkeypatch, tmp_path
-):
+def test_present_dockerenv_returns_deterministic_uptime(container_uptime, monkeypatch, tmp_path):
     """With a /.dockerenv at a fixed mtime and `now` pinned to exactly
     2 days later, compute_uptime must produce '2d 0h (since <ISO>)'
     and the matching ISO timestamp. Tests both branches of the format

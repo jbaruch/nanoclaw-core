@@ -15,9 +15,10 @@ data/state/<folder>/ on the host bound at /workspace/state). Pre-#220
 this script wrote to /home/node/.claude/nanoclaw-state/ as a
 workaround because /workspace/group/ is read-only on untrusted tiers
 and any write silently EACCES'd; with /workspace/state/ available,
-the workaround is no longer needed and the path is consistent with
-the documented "agent's persisted state, every tier, always RW"
-convention in docs/SPEC.md (Container Workspace Layout).
+the workaround is no longer needed. The "agent's persisted state,
+every tier, always RW" convention is documented in the host repo's
+docs/SPEC.md under "Container Workspace Layout"
+(https://github.com/jbaruch/nanoclaw/blob/main/docs/SPEC.md).
 
 Per-group scoping (not per-session): the seen-set tracks the group's
 unanswered history regardless of which session ran the check, so

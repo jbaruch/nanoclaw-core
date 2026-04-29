@@ -23,25 +23,15 @@ echo "Channel: main"
 
 ### 2. Container uptime
 
-Read `container_started` from `/workspace/group/session-state.json` and compute age:
+Run the `container-uptime.py` script (`scripts/container-uptime.py` relative to this skill, mounted into the agent at `/home/node/.claude/skills/tessl__status/scripts/container-uptime.py` — the absolute path matches every other `tessl__*` skill in this tile and is what the agent must literally invoke):
 
-```python
-import json, datetime
-state = json.load(open('/workspace/group/session-state.json'))
-started = state.get('container_started')
-if started:
-    now = datetime.datetime.now(datetime.timezone.utc)
-    # endswith-slice instead of `.replace("Z", ...)` — `.replace`
-    # would corrupt any timestamp that contains 'Z' inside a numeric
-    # offset (`+0Z00`-style malformed strings) or in microsecond
-    # precision. The 'Z' suffix is positional; treat it that way.
-    iso = started[:-1] + '+00:00' if started.endswith('Z') else started
-    started_dt = datetime.datetime.fromisoformat(iso)
-    age = now - started_dt
-    print(f"{age.days}d {age.seconds // 3600}h (since {started})")
-else:
-    print("unknown")
+```bash
+python3 /home/node/.claude/skills/tessl__status/scripts/container-uptime.py | python3 -c 'import json,sys; print(json.load(sys.stdin)["uptime_text"])'
 ```
+
+The script outputs single-line JSON `{"uptime_text": "<Nd Hh (since ISO8601)>", "started": "<ISO8601>"}`. The pipe extracts `uptime_text` for direct rendering. On a non-container host (no `/.dockerenv`), `uptime_text` is `"unknown"` and `started` is `null`.
+
+Reads `/.dockerenv` mtime, which Docker creates at container spawn time. Cross-tier safe — the file exists in every container regardless of trust level, so this works on untrusted, trusted, and main alike with no external state file.
 
 ### 3. Workspace and mount visibility
 

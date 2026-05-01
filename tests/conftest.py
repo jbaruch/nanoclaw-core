@@ -57,3 +57,33 @@ def container_uptime():
         "container_uptime_under_test",
         "skills/status/scripts/container-uptime.py",
     )
+
+
+@pytest.fixture
+def unanswered_precheck(tmp_path, monkeypatch):
+    """Load check-unanswered/scripts/unanswered-precheck.py with the
+    four module-level paths redirected at tmp_path. Returned tuple is
+    (module, seen_dir, seen_file, legacy_seen_file, check_script).
+
+    `CHECK_SCRIPT` is monkeypatched at a tmp_path location so tests
+    can write fake check-unanswered.py implementations that drive
+    every output branch (success, non-zero, invalid JSON, env-warning,
+    bad-shape) without invoking the real check-unanswered.
+
+    The seen_dir is NOT pre-created so callers can exercise both the
+    "first run" and "post-migration" branches; the canonical seen
+    file is also absent until the test explicitly writes it."""
+    seen_dir = tmp_path / "check-unanswered"
+    seen_file = seen_dir / "unanswered-seen.json"
+    legacy_seen_file = tmp_path / "legacy" / "unanswered-seen.json"
+    check_script = tmp_path / "check-unanswered.py"
+
+    module = _load(
+        "unanswered_precheck_under_test",
+        "skills/check-unanswered/scripts/unanswered-precheck.py",
+    )
+    monkeypatch.setattr(module, "SEEN_STATE_DIR", str(seen_dir))
+    monkeypatch.setattr(module, "SEEN_FILE", str(seen_file))
+    monkeypatch.setattr(module, "LEGACY_SEEN_FILE", str(legacy_seen_file))
+    monkeypatch.setattr(module, "CHECK_SCRIPT", str(check_script))
+    return module, seen_dir, seen_file, legacy_seen_file, check_script

@@ -44,3 +44,16 @@ def container_uptime():
         "container_uptime_under_test",
         "skills/status/scripts/container-uptime.py",
     )
+
+
+@pytest.fixture
+def query_message_history():
+    """Fresh-loaded module under test for the query-history skill's
+    messages.db keyword/sender query helper. Per-test reload so tests
+    that monkeypatch env or module-level constants don't leak state
+    across tests, matching the pattern used by `container_uptime`
+    above."""
+    return _load(
+        "query_message_history_under_test",
+        "skills/query-history/scripts/query-message-history.py",
+    )

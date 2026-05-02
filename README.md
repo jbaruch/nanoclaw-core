@@ -32,6 +32,7 @@ tessl install jbaruch/nanoclaw-core
 | Skill | Description |
 |-------|-------------|
 | [status](skills/status/SKILL.md) | One-line status emit on a defined cadence |
+| [query-history](skills/query-history/SKILL.md) | Search `messages.db` by keyword and/or sender; companion to `context-recovery` |
 
 ## Philosophy
 

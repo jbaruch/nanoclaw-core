@@ -36,15 +36,9 @@ skills/
     SKILL.md                 # Skill definition consumed by the tessl runtime
     scripts/
       container-uptime.py   # Reads /.dockerenv mtime to compute container uptime
-  check-unanswered/
-    SKILL.md
-    scripts/
-      check-unanswered.py   # Phase-1 SQL scan for unanswered user messages
-      unanswered-precheck.py # Pre-check gate: wake agent only when candidate set changed
 
 tests/
   conftest.py               # Shared fixtures; loads kebab-case scripts via importlib
-  test_check_unanswered.py
   test_container_uptime.py
 
 .github/
@@ -100,7 +94,7 @@ CI runs these in order: ruff check → ruff format → pytest. All three must pa
 ### Skill files (`skills/*/SKILL.md`)
 
 - SKILL.md files have YAML frontmatter with `name:` and `description:` fields (no `alwaysApply`).
-- Scripts live in `skills/<skill-name>/scripts/` and use kebab-case filenames (e.g., `check-unanswered.py`).
+- Scripts live in `skills/<skill-name>/scripts/` and use kebab-case filenames (e.g., `container-uptime.py`).
 - Skill scripts are plain Python; they are deployed into agent containers at a known path: `/home/node/.claude/skills/tessl__<skill-name>/scripts/<script>.py`.
 
 ### `tile.json` and `README.md` must stay in sync
@@ -112,8 +106,8 @@ CI runs these in order: ruff check → ruff format → pytest. All three must pa
 ### Tests
 
 - Test files live in `tests/` and are standard pytest.
-- **Kebab-case script files cannot be imported normally** (`import check-unanswered` is a syntax error). All test fixtures load them via `importlib.util.spec_from_file_location`. The `conftest.py` `_load()` helper handles this — use the existing fixtures (`check_unanswered`, `container_uptime`) rather than reimplementing the loading pattern.
-- Each fixture returns a **fresh module instance per test** — this prevents module-level constants (e.g., `CHAT_JID`, `DB`) from leaking across tests that monkeypatch them.
+- **Kebab-case script files cannot be imported normally** (`import container-uptime` is a syntax error). All test fixtures load them via `importlib.util.spec_from_file_location`. The `conftest.py` `_load()` helper handles this — use the existing `container_uptime` fixture as the template rather than reimplementing the loading pattern.
+- Each fixture returns a **fresh module instance per test** — this prevents module-level constants from leaking across tests that monkeypatch them.
 - Tests must be deterministic: no random test data, no reliance on current wall-clock time. Pin time inputs explicitly (see `test_container_uptime.py` for the pattern).
 - Ruff lint is scoped to `tests/` in `pyproject.toml`; do **not** apply ruff rules to files under `skills/*/scripts/` unless that is the explicit scope of a PR.
 
@@ -121,8 +115,6 @@ CI runs these in order: ruff check → ruff format → pytest. All three must pa
 
 - Scripts output JSON to stdout. The payload shape must have **all keys present on both success and error paths** — downstream consumers parse uniformly without special-casing.
 - The `error` field uses three states: `null` (clean success), `"env-warning: ..."` prefix (non-fatal config hint, script still produced useful output), or any other string (hard failure, exits non-zero).
-- `NANOCLAW_CHAT_JID` env var must be set for `check-unanswered.py` to run against a chat. Missing it causes a structured error payload with exit code 1.
-- Seen-state for the precheck is persisted under `/home/node/.claude/nanoclaw-state/` (not `/workspace/group/` which can be read-only for untrusted groups).
 
 ---
 

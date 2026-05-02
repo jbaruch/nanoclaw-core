@@ -45,9 +45,6 @@
   "skills": {
     "status": {
       "path": "skills/status/SKILL.md"
-    },
-    "check-unanswered": {
-      "path": "skills/check-unanswered/SKILL.md"
     }
   }
 }

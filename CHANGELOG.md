@@ -4,6 +4,8 @@
 
 ### Rules
 
+- **`core-behavior.md` — strip deploy-specific examples from the dual-handle section** (`jbaruch/nanoclaw-core#36`). The "Trigger word and Telegram username refer to the same bot" subsection used one specific deployment's bot pair as its only example and embedded an entire reference-incident block (group name, two live message IDs, a quoted message in another language) — both inappropriate for a deploy-anywhere universal tile. Replaced with abstract prose that cites the runtime identity preamble (`ASSISTANT_NAME` / `ASSISTANT_USERNAME`) as the authoritative source for the handle pair. The universal failure mode ("don't split yourself into multiple addressees based on surface form") is preserved verbatim. The relocated incident lives in `nanoclaw-trusted` as a deploy-tier reference; the runtime preamble fix that prevents the underlying confusion is in flight separately on `jbaruch/nanoclaw-public`.
+
 - **`temporal-awareness.md` — `current_tz` lookup updated for the SQLite migration** (`jbaruch/nanoclaw#302`). The "What time is it?" check now points at `SELECT current_tz FROM tz_state WHERE id = 1` in `/workspace/store/messages.db` instead of the retired `task-tz-state.json` envelope. The reasoning the rule asks for (UTC, owner local, jet-lag, in-flight-state) is unchanged; only the storage handle moves.
 
 ### Test infrastructure

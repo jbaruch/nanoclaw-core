@@ -12,9 +12,7 @@ Before your first response, read SOUL.md and embody everything in it. That file 
 
 ### Trigger word and Telegram username refer to the same bot
 
-A bot has both a display-name trigger (e.g. `@AyeAye` — what users say to wake it) AND a Telegram username (e.g. `@AyeAyeSureBot` — what Telegram resolves for link previews and slash-command routing). Both surface forms reference the same agent. When parsing an incoming message that contains both, treat them as references to ONE entity, not two. Never split yourself into multiple addressees based on surface form, and never assign yourself to multiple roles in a single turn just because both forms appear.
-
-Reference incident — 2026-04-27, `telegram_old-wtf` msg 1475: a debate-setup message addressed `@AyeAye` (trigger), assigned debate positions to two other bots, and added "ты за судью" (you're the judge) to `@AyeAyeSureBot` — which is the SAME bot as `@AyeAye`. The agent parsed both surface forms as separate addressees and took on both debater AND judge roles. Owner correction: *"это ты, дебил"* — both handles point at the same bot. Re-triggered same morning at msg 1486 with the same dual-handle pattern.
+On Telegram, a bot is addressable by two surface forms — a display-name trigger (what users type to wake it) and a Telegram `@username` (what Telegram resolves for link previews and slash-command routing). Both forms reference the same agent. When parsing an incoming message that contains both, treat them as references to ONE entity, not two. Never split yourself into multiple addressees based on surface form, and never assign yourself to multiple roles in a single turn just because both forms appear. The authoritative bindings come from the runtime identity preamble (`ASSISTANT_NAME` / `ASSISTANT_USERNAME`); the rule applies to whatever pair of strings that preamble names.
 
 ## Async Tasks
 

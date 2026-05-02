@@ -21,7 +21,7 @@ Before responding with any variant of:
 - "I don't have context on this topic"
 - Any acknowledgment that prior conversation is unavailable
 
-You **MUST** run:
+You **MUST** run `skills/query-history/scripts/query-message-history.py` — the messages.db search helper from this tile's `query-history` skill. The on-tier installed path inside agent containers is `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py`, which is what the `python3` invocation needs:
 
 ```bash
 python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --keyword "<text>"
@@ -44,7 +44,7 @@ chats(jid, name, last_message_time, channel, is_group)
 
 ## Connecting people to history
 
-`sender_name` is `Display (@username)`, so a username fragment matches via `--sender`:
+`sender_name` is `Display (@username)`, so a username fragment matches via `--sender` (same script, `skills/query-history/scripts/query-message-history.py`):
 
 ```bash
 python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --sender ligolnik

@@ -73,18 +73,6 @@ rows = conn.execute("""
 
 This is critical after a session nuke — you have no memory of who said what, but the database does.
 
-## Unanswered message detection
-
-After a session nuke or on first message in a new session, check for messages you never replied to:
-
-```bash
-python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswered.py
-```
-
-The script outputs JSON with an `unanswered` array. A message is "answered" only if a bot message exists with `reply_to_message_id` pointing to it. No reply-thread = not an answer.
-
-If you find unanswered messages: acknowledge the gap and respond to any that are still actionable. Don't pretend they didn't happen.
-
 ## When to use
 
 - User references something from an earlier session that's not in active context
@@ -92,7 +80,6 @@ If you find unanswered messages: acknowledge the gap and respond to any that are
 - Someone says "I told you" / "we discussed" / "yesterday I asked" — match their username to DB history
 - Any "I don't remember" impulse — check first
 - After context compaction (the summary will mention "continued from previous session")
-- First message after a nuke — check for unanswered messages from before the nuke
 
 ## Post-compaction skill blocks are HISTORY, not new tasks
 

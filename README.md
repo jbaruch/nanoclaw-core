@@ -32,7 +32,6 @@ tessl install jbaruch/nanoclaw-core
 | Skill | Description |
 |-------|-------------|
 | [status](skills/status/SKILL.md) | One-line status emit on a defined cadence |
-| [check-unanswered](skills/check-unanswered/SKILL.md) | Two-phase scan for unanswered user messages — SQL filter + Phase 2 inline-answer reasoning |
 
 ## Philosophy
 

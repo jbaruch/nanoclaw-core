@@ -21,13 +21,15 @@ Before responding with any variant of:
 - "I don't have context on this topic"
 - Any acknowledgment that prior conversation is unavailable
 
-You **MUST** run `skills/query-history/scripts/query-message-history.py` — the messages.db search helper from this tile's `query-history` skill. The on-tier installed path inside agent containers is `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py`, which is what the `python3` invocation needs:
+You **MUST** run `skills/query-history/scripts/query-message-history.py` — the messages.db search helper from this tile's `query-history` skill — with at least `--keyword "<text>"`:
 
 ```bash
-python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --keyword "<text>"
+python3 skills/query-history/scripts/query-message-history.py --keyword "<text>"
 ```
 
 Filters: `--sender <name>` (matches `sender_name`, see "Connecting people to history" below), `--limit N` (default 20, capped at 50 per `rules/query-size-limits.md`). Output is single-line JSON on stdout; chat scope comes from `NANOCLAW_CHAT_JID`.
+
+(Runtime note: inside agent containers the script is installed at `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py` per the standard `skills/<name>` → `tessl__<name>` mount convention documented in `.github/copilot-instructions.md`.)
 
 ## Database schema (quick reference)
 
@@ -47,7 +49,7 @@ chats(jid, name, last_message_time, channel, is_group)
 `sender_name` is `Display (@username)`, so a username fragment matches via `--sender` (same script, `skills/query-history/scripts/query-message-history.py`):
 
 ```bash
-python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --sender ligolnik
+python3 skills/query-history/scripts/query-message-history.py --sender ligolnik
 ```
 
 Combine with `--keyword` to narrow with AND. Critical after a session nuke — you have no memory of who said what, but the database does.

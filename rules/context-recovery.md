@@ -21,28 +21,15 @@ Before responding with any variant of:
 - "I don't have context on this topic"
 - Any acknowledgment that prior conversation is unavailable
 
-You **MUST** run:
+You **MUST** run `skills/query-history/scripts/query-message-history.py` — the messages.db search helper from this tile's `query-history` skill — with at least `--keyword "<text>"`:
 
-```python
-import os, sqlite3
-chat_jid = os.environ.get('NANOCLAW_CHAT_JID')
-if not chat_jid:
-    raise RuntimeError('NANOCLAW_CHAT_JID must be set — this snippet has to run in the agent container')
-keyword = 'KEYWORD'  # replace with a relevant term from what the user is referencing
-conn = sqlite3.connect('/workspace/store/messages.db')
-rows = conn.execute("""
-    SELECT id, timestamp, sender_name, content, is_from_me
-    FROM messages
-    WHERE chat_jid = ?
-      AND content LIKE '%' || ? || '%'
-    ORDER BY timestamp DESC
-    LIMIT 20
-""", (chat_jid, keyword)).fetchall()
-for r in rows: print(r)
-conn.close()
+```bash
+python3 skills/query-history/scripts/query-message-history.py --keyword "<text>"
 ```
 
-`NANOCLAW_CHAT_JID` is always set in the container env — use it. Picking a chat with `SELECT jid FROM chats LIMIT 1` returns whatever row SQLite surfaces first, which in a multi-group deployment silently queries the wrong chat. And always bind the keyword as a parameter, never interpolate it into the query string — user text may contain quotes that break the SQL or broaden the match unexpectedly.
+Filters: `--sender <name>` (matches `sender_name`, see "Connecting people to history" below), `--limit N` (default 20, capped at 50 per `rules/query-size-limits.md`). Output is single-line JSON on stdout; chat scope comes from `NANOCLAW_CHAT_JID`.
+
+(Runtime note: inside agent containers the script is installed at `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py` per the standard `skills/<name>` → `tessl__<name>` mount convention documented in `.github/copilot-instructions.md`.)
 
 ## Database schema (quick reference)
 
@@ -59,19 +46,13 @@ chats(jid, name, last_message_time, channel, is_group)
 
 ## Connecting people to history
 
-`sender_name` contains both the display name AND the username. When someone in the current conversation references past messages ("I told you yesterday"), match their Telegram username or name against `sender_name`:
+`sender_name` is `Display (@username)`, so a username fragment matches via `--sender` (same script, `skills/query-history/scripts/query-message-history.py`):
 
-```python
-# Find what @ligolnik said yesterday
-rows = conn.execute("""
-    SELECT timestamp, content FROM messages
-    WHERE sender_name LIKE '%ligolnik%'
-      AND timestamp > datetime('now', '-2 days')
-    ORDER BY timestamp DESC LIMIT 10
-""").fetchall()
+```bash
+python3 skills/query-history/scripts/query-message-history.py --sender ligolnik
 ```
 
-This is critical after a session nuke — you have no memory of who said what, but the database does.
+Combine with `--keyword` to narrow with AND. Critical after a session nuke — you have no memory of who said what, but the database does.
 
 ## When to use
 

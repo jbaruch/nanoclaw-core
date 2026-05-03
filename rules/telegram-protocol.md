@@ -18,8 +18,7 @@ The runtime reacts on first touch (👀) via the `react-first` UserPromptSubmit 
 
 Telegram replaces the bot's reaction on each new `react_to_message` call, so a more specific emoji later in the turn supersedes the runtime's 👀.
 
-**Valid reaction emoji only** (invalid ones silently fall back to 👍):
-👍 👎 ❤ 🔥 🥰 👏 😁 🤔 🤯 😱 🤬 😢 🎉 🤩 🤮 💩 🙏 👌 🕊 🤡 🥱 🥴 😍 🐳 ❤‍🔥 🌚 🌭 💯 🤣 ⚡ 🍌 🏆 💔 🤨 😐 🍓 🍾 💋 🖕 😈 😴 😭 🤓 👻 👨‍💻 👀 🎃 🙈 😇 😨 🤝 ✍ 🤗 🫡 🎅 🎄 ☃ 💅 🤪 🗿 🆒 💘 🙉 🦄 😘 💊 🙊 😎 👾 🤷‍♂ 🤷 🤷‍♀ 😡
+Telegram allows only its fixed reaction-emoji set; `react_to_message` silently falls back to 👍 for any unsupported emoji, so picking from the five above is safe and any other guess is harmless.
 
 ## Reply threading
 
@@ -33,19 +32,7 @@ React → work → deliver result. Do NOT hold the user hostage with a reply tha
 
 ## Formatting
 
-Telegram parses HTML, not Markdown. The `no-markdown-in-send-message` PreToolUse hook (`jbaruch/nanoclaw#138`) auto-rewrites the four common Markdown patterns the model leaks (`**bold**` → `<b>`, `[label](url)` → `<a href>`, `` `code` `` → `<code>`, `- ` / `* ` line bullets → `•`), so the agent does not need to emit raw HTML for those four. For everything else (italic, underline, strikethrough, code blocks, blockquotes, spoilers), emit HTML directly:
-
-| Format | HTML syntax |
-|--------|------------|
-| Italic | `<i>text</i>` |
-| Underline | `<u>text</u>` |
-| Strikethrough | `<s>text</s>` |
-| Code block | `<pre>code</pre>` |
-| Code block (lang) | `<pre><code class="language-python">code</code></pre>` |
-| Quote | `<blockquote>text</blockquote>` |
-| Spoiler | `<tg-spoiler>text</tg-spoiler>` |
-
-For bullets use `•` (the hook also auto-converts `-` / `*` line starts).
+Telegram parses HTML (Telegram's own subset, including `<tg-spoiler>`), not Markdown. The `no-markdown-in-send-message` PreToolUse hook (`jbaruch/nanoclaw#138`) auto-rewrites the four common Markdown leaks (`**bold**` → `<b>`, `[label](url)` → `<a href>`, `` `code` `` → `<code>`, `- ` / `* ` line bullets → `•`), so emit raw HTML only for the formats the hook doesn't cover: `<i>`, `<u>`, `<s>`, `<pre>` (with optional `<code class="language-python">` for syntax highlighting — substitute the actual language name, not a placeholder), `<blockquote>`, `<tg-spoiler>`. For bullets use `•`.
 
 Special characters in user data: only `<`, `>`, and `&` need HTML-entity escaping (`&lt;`, `&gt;`, `&amp;`). Apostrophes (`'`) and double quotes (`"`) pass through raw — do NOT escape them as `&apos;` / `&quot;`. Telegram's HTML parse mode does not decode those entities; users see the literal `&apos;` / `&quot;` in the rendered message. Reference incident: 2026-04-26 untrusted group msg 1116, where `Owner&apos;s Office` and `someone&apos;s tracing` rendered verbatim.
 

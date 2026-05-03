@@ -74,9 +74,7 @@ That block is a **record of what already ran during the now-compacted window**. 
 2. Read the **most recent user message** in the summary's "All user messages" list. If the user's last move was NOT the skill invocation (e.g. they replied "понял" or moved to a different topic), the skill is closed.
 3. If ambiguous, ask before re-executing anything with visible side effects (browser scraping, sending messages, writing files, GitHub API calls).
 
-**Reference incident — 2026-04-24 / repeat 2026-04-25 (JCON-2026 speakers scrape):** A post-compaction system-reminder included an `agent-browser` invocation with JCON-2026-speakers ARGUMENTS. On both days the agent treated it as a new task and re-ran the entire scrape + report — the owner had finished that task hours earlier ("мы закончили с этим часа 4 назад"). The actual pending work was unrelated (continuing skill patches per the summary's Optional Next Step). The repeat one day later, despite a memory entry warning against this exact failure, is what motivated #104 (kill auto-compaction).
-
-The ARGUMENTS block is context about what the agent did. It is not a re-up of the request.
+The ARGUMENTS block is context about what the agent did. It is not a re-up of the request. Past failure: 2026-04-24 / repeat 2026-04-25 — agent re-ran a JCON-2026 scrape from a post-compaction system-reminder block while the owner had completed it hours earlier; recurrence one day later motivated `jbaruch/nanoclaw#104` (kill auto-compaction). Full narrative: `docs/adr/2026-04-25-jcon-scrape-repeat-and-auto-compaction-kill.md`.
 
 ## This is a hard requirement
 

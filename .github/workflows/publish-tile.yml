@@ -20,14 +20,11 @@ jobs:
         with:
           token: ${{ secrets.TESSL_TOKEN }}
 
-      - name: Skill review (quality gate)
-        run: |
-          for skill_dir in skills/*/; do
-            [ -f "$skill_dir/SKILL.md" ] || continue
-            echo "::group::Reviewing $(basename $skill_dir)"
-            tessl skill review --threshold 85 "$skill_dir/SKILL.md"
-            echo "::endgroup::"
-          done
+      - name: Skill review — status
+        run: tessl skill review --threshold 85 skills/status/SKILL.md
+
+      - name: Skill review — query-history
+        run: tessl skill review --threshold 85 skills/query-history/SKILL.md
 
       - name: Lint tile
         run: tessl tile lint .

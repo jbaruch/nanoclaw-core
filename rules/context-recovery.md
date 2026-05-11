@@ -4,78 +4,37 @@ alwaysApply: true
 
 # Context Recovery — Never Lose History
 
-## The Rule
+## The rule
 
-**Never say you've lost context or forgotten a previous conversation without querying `messages.db` for it.**
-
-This rule is **conditional** — it fires only when the agent is about to claim lost context. It is not the per-message first action (the runtime react hook is); it operates as a gate on a specific class of replies.
-
-The full message history is always available at `/workspace/store/messages.db`. Context compaction removes it from your active context — but the database still has it. There is no excuse for "I don't remember what we discussed" when the database is a query away.
+**Never say you've lost context or forgotten a previous conversation without querying `messages.db` for it.** Context compaction removes history from active context — the database at `/workspace/store/messages.db` still has it. Conditional gate, not a per-message action: fires only when you're about to claim lost context.
 
 ## Required behavior
 
-Before responding with any variant of:
-- "Потерял контекст"
-- "I don't remember this thread"
-- "What were we discussing?"
-- "I don't have context on this topic"
-- Any acknowledgment that prior conversation is unavailable
-
-You **MUST** run `skills/query-history/scripts/query-message-history.py` — the messages.db search helper from this tile's `query-history` skill — with at least `--keyword "<text>"`:
+Before responding with "Потерял контекст", "I don't remember this thread", "I don't have context on this topic", or any equivalent acknowledgement that prior conversation is unavailable, run the `query-history` skill's search helper:
 
 ```bash
 python3 skills/query-history/scripts/query-message-history.py --keyword "<text>"
 ```
 
-Filters: `--sender <name>` (matches `sender_name`, see "Connecting people to history" below), `--limit N` (default 20, capped at 50 per `rules/query-size-limits.md`). Output is single-line JSON on stdout; chat scope comes from `NANOCLAW_CHAT_JID`.
+Filters: `--sender <name>` (matches `sender_name`; see the Schema section below for the `Display (@username)` shape — a username fragment is enough), `--limit N` (default 20, cap 50 per `rules/query-size-limits.md`). Output is single-line JSON on stdout; chat scope from `NANOCLAW_CHAT_JID`. Inside agent containers the script mounts at `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py` per the standard `tessl__<name>` convention.
 
-(Runtime note: inside agent containers the script is installed at `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py` per the standard `skills/<name>` → `tessl__<name>` mount convention documented in `.github/copilot-instructions.md`.)
-
-## Database schema (quick reference)
+## Schema (quick reference)
 
 ```sql
 messages(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message)
 chats(jid, name, last_message_time, channel, is_group)
 ```
 
-- `is_from_me = 1` — messages from the bot (your own responses)
-- `is_from_me = 0` — messages from users
-- `sender` — numeric user ID (stable across name changes)
-- `sender_name` — display name with username, e.g. `Alice (@alice)`, `Bob (@bob)`
-- `content` — full message text
-
-## Connecting people to history
-
-`sender_name` is `Display (@username)`, so a username fragment matches via `--sender` (same script, `skills/query-history/scripts/query-message-history.py`):
-
-```bash
-python3 skills/query-history/scripts/query-message-history.py --sender ligolnik
-```
-
-Combine with `--keyword` to narrow with AND. Critical after a session nuke — you have no memory of who said what, but the database does.
-
-## When to use
-
-- User references something from an earlier session that's not in active context
-- User says "ты говорил..." (you said...) and you don't have it in context
-- Someone says "I told you" / "we discussed" / "yesterday I asked" — match their username to DB history
-- Any "I don't remember" impulse — check first
-- After context compaction (the summary will mention "continued from previous session")
+`is_from_me = 1` is the bot's own messages. `sender` is the stable numeric user ID; `sender_name` is `Display (@username)` — a username fragment matches via `--sender`. Critical after a session nuke: the DB remembers who said what when you don't.
 
 ## Post-compaction skill blocks are HISTORY, not new tasks
 
-When the conversation resumes after compaction, the system-reminder tail contains a block whose body opens with *"The following skills were invoked in this session. Continue to follow these guidelines:"*, then for each invocation lists a `### Skill:` header, the skill's path, and an `ARGUMENTS:` line carrying the full text of the original invocation (including any URLs or parameters).
+When the conversation resumes after compaction, the system-reminder tail may carry a block opening with *"The following skills were invoked in this session. Continue to follow these guidelines:"* followed by `### Skill:` headers with `ARGUMENTS:` lines. That block is a **record of what already ran during the now-compacted window** — the skill already executed, the side effects (scrapes, messages, file writes) already landed. Re-executing it duplicates work and spams the user.
 
-That block is a **record of what already ran during the now-compacted window**. It is NOT a re-up of the request. The skill already executed, the tool calls already happened, the side effects (scrapes, messages, file writes) already landed. Re-executing it duplicates work and can spam the user.
+Before treating any such skill as a fresh task: read the conversation summary's **Current Work** and **Optional Next Step** sections (if the skill's ARGUMENTS aren't mentioned there, it was already handled and the summary moved on), then the most recent user message in the "All user messages" list (if the user's last move was NOT the skill invocation — e.g. "понял" or a topic shift — the skill is closed). If ambiguous, ask before re-executing anything with visible side effects.
 
-**Before treating any skill in a post-compaction system-reminder as a fresh task:**
+Reference incident: 2026-04-24 / repeat 2026-04-25 — agent re-ran a JCON-2026 scrape from a post-compaction system-reminder block hours after the owner had completed it; the recurrence motivated `jbaruch/nanoclaw#104` (kill auto-compaction). Full narrative: `docs/adr/2026-04-25-jcon-scrape-repeat-and-auto-compaction-kill.md`.
 
-1. Read the conversation summary's **Current Work** and **Optional Next Step** sections. These reflect the actual state at compaction time. If the skill ARGUMENTS aren't mentioned there, the skill was already handled and the summary moved on.
-2. Read the **most recent user message** in the summary's "All user messages" list. If the user's last move was NOT the skill invocation (e.g. they replied "понял" or moved to a different topic), the skill is closed.
-3. If ambiguous, ask before re-executing anything with visible side effects (browser scraping, sending messages, writing files, GitHub API calls).
+## Hard requirement
 
-The ARGUMENTS block is context about what the agent did. It is not a re-up of the request. Past failure: 2026-04-24 / repeat 2026-04-25 — agent re-ran a JCON-2026 scrape from a post-compaction system-reminder block while the owner had completed it hours earlier; recurrence one day later motivated `jbaruch/nanoclaw#104` (kill auto-compaction). Full narrative: `docs/adr/2026-04-25-jcon-scrape-repeat-and-auto-compaction-kill.md`.
-
-## This is a hard requirement
-
-Claiming lost context without checking the database is a failure mode equivalent to fabrication. The information exists. Retrieve it.
+Claiming lost context without checking the database is fabrication. The information exists. Retrieve it.

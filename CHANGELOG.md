@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Rules — conciseness pass tier 3 per `coding-policy: context-writing-style`
+
+- **core-behavior** — drop "just because both forms appear" because-clause from the dual-handle section. Operative directive ("Never assign yourself to multiple roles in a single turn") stays; the rationale clause goes.
+- **progress-updates** — replace "Two max for very long tasks" with "Two max for tasks beyond ~2 minutes". The `very` intensifier was carrying no constraint; the duration bound is the actual operative content.
+- **read-full-content** — drop `## Why` section entirely (3 lines of meta-justification: "Truncated previews optimize for speed at the cost of correctness. Re-doing work because of a wrong decision based on incomplete content is more expensive than reading fully once. There is no valid reason to use a preview when making a decision."). The operative content sits in `## The rule` and `## Applies to`.
+
 ### Rules
 
 - **Compression sweep on the three rules >40 lines** (`jbaruch/nanoclaw#552` step 2 of the `requires:` + compression + reorg plan) — Audit on `telegram_old-wtf` (trusted-tier baseline) measured RULES.md at 932 lines / 28 rules. The core-tile contribution is 402 lines / 12 rules. This PR compresses the three rules that exceed the `coding-policy: context-artifacts` ~25–40 line target, preserving every load-bearing fact (incident references, command contracts, distinguishing examples) and pruning redundant framing, multi-sentence elaborations of single bullets, and exhaustive enumerations:

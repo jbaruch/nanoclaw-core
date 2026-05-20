@@ -16,10 +16,6 @@ Before drawing any conclusion from external content:
 
 For Gmail specifically: use `format: "full"`, decode `payload.parts[]` (find `mimeType: "text/plain"`, base64url-decode `body.data`). `messageText`, `preview`, and `snippet` fields are truncated — acceptable for **display only**, never for decisions.
 
-## Why
-
-Truncated previews optimize for speed at the cost of correctness. Re-doing work because of a wrong decision based on incomplete content is more expensive than reading fully once. There is no valid reason to use a preview when making a decision.
-
 ## Applies to
 
 - Task due date assignment from email links

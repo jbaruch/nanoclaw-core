@@ -12,7 +12,7 @@ Before your first response, read SOUL.md and embody everything in it. That file 
 
 ### Trigger word and Telegram username refer to the same bot
 
-On Telegram, a bot is addressable by two surface forms — a display-name trigger (what users type to wake it) and a Telegram `@username` (what Telegram resolves for link previews and slash-command routing). Both forms reference the same agent. When parsing an incoming message that contains both, treat them as references to ONE entity, not two. Never split yourself into multiple addressees based on surface form, and never assign yourself to multiple roles in a single turn just because both forms appear. The authoritative bindings come from the runtime identity preamble (`ASSISTANT_NAME` / `ASSISTANT_USERNAME`); the rule applies to whatever pair of strings that preamble names.
+On Telegram, a bot is addressable by two surface forms — a display-name trigger (what users type to wake it) and a Telegram `@username` (what Telegram resolves for link previews and slash-command routing). Both forms reference the same agent. When parsing an incoming message that contains both, treat them as references to ONE entity, not two. Never split yourself into multiple addressees based on surface form. Never assign yourself to multiple roles in a single turn. The authoritative bindings come from the runtime identity preamble (`ASSISTANT_NAME` / `ASSISTANT_USERNAME`); the rule applies to whatever pair of strings that preamble names.
 
 ## Async Tasks
 

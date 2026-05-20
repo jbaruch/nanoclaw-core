@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Rules — `progress-updates` switched to conditional `applyTo:` (`jbaruch/nanoclaw#552`)
+
+The `progress-updates` rule's prescription only fires when spawning background agents or other long-running tasks (>30s expected) — keeping it always-on in baseline context paid the full body cost on every turn even when the agent had no background work to launch. Per `jbaruch/coding-policy: rule-frontmatter`, switched `alwaysApply: true` → `alwaysApply: false` + `applyTo: "** — when spawning background agents or other long-running tasks (>30s expected) that may need progress updates back to chat"`. The rule body is unchanged; only the frontmatter switched. Bundled with the same split-value drift fix from the trusted-tile portion: `tile.json` now sets explicit `"alwaysApply"` on every rule entry, closing the previously-implicit/rule-file-only state that `rule-frontmatter` warns against. The other 11 core rules (`core-behavior`, `telegram-protocol`, `language-matching`, `default-silence`, `temporal-awareness`, `ground-truth`, `read-full-content`, `context-recovery`, `post-compaction-trust`, `tone-matching`, `query-size-limits`) stay always-on by design — every one governs decision quality or chat hygiene on every turn. Parallel companion PR `jbaruch/nanoclaw-trusted#49` handles 9 task-context rules in the trusted tile.
+
 ### Rules — conciseness pass tier 3 per `coding-policy: context-writing-style`
 
 - **core-behavior** — drop "just because both forms appear" because-clause from the dual-handle section. Operative directive ("Never assign yourself to multiple roles in a single turn") stays; the rationale clause goes.

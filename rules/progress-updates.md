@@ -1,5 +1,6 @@
 ---
-alwaysApply: true
+alwaysApply: false
+applyTo: "** — when spawning background agents or other long-running tasks (>30s expected) that may need progress updates back to chat"
 ---
 
 # Progress Updates for Long Tasks

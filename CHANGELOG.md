@@ -11,7 +11,9 @@ LLMs default to treating all information as present-tense: they convert a local 
 - **Surface sync** — `tile.json` registers the skill; `README.md` rules + skills tables updated; `.github/copilot-instructions.md` repo layout lists the new skill, script, and test file.
 - **Companion (trusted tile)** — The overlapping generic "anchor to real time" sentence in `nanoclaw-trusted/rules/local-context-anchoring.md` is removed there so the grounding lives once (in core); all local/location anchoring (relative-phrasing → local frame, `location_*`/`here` handling, weak-anchor surfacing) stays in trusted. Tracked together under `jbaruch/nanoclaw-core#51`; cross-ref `jbaruch/nanoclaw-trusted` at PR time.
 
-## Unreleased
+## 0.1.107 — 2026-05-29
+
+<!-- Accumulated entries that had piled up under a since-removed pending-changes heading; stamped under the last version they had all shipped by (range 0.1.79–0.1.107). Cross-references ("entry above/below") are within this block. -->
 
 ### Rules — `progress-updates` switched to conditional `applyTo:` (`jbaruch/nanoclaw#552`)
 

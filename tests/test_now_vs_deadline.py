@@ -91,6 +91,28 @@ def test_comparison_is_offset_independent(now_vs_deadline):
     assert result["delta_seconds"] == 6550
 
 
+def test_subsecond_past_is_past_not_now(now_vs_deadline):
+    """A deadline a fraction of a second in the past must report 'past',
+    not 'now'. `int(total_seconds())` truncates to 0, so `relation` must
+    come from the raw timedelta sign instead."""
+    deadline = datetime.datetime(2026, 6, 12, 15, 0, 0, tzinfo=UTC)
+    now = datetime.datetime(2026, 6, 12, 15, 0, 0, 500000, tzinfo=UTC)  # 0.5s after
+    result = now_vs_deadline.compare(now, deadline)
+    assert result["relation"] == "past"
+    assert result["deadline_elapsed"] is True
+    assert result["delta_seconds"] == 0  # truncated display value
+    assert result["delta_text"] == "<1s ago"
+
+
+def test_subsecond_future_is_future_not_now(now_vs_deadline):
+    deadline = datetime.datetime(2026, 6, 12, 15, 0, 0, 500000, tzinfo=UTC)  # 0.5s ahead
+    now = datetime.datetime(2026, 6, 12, 15, 0, 0, tzinfo=UTC)
+    result = now_vs_deadline.compare(now, deadline)
+    assert result["relation"] == "future"
+    assert result["still_time_to_act"] is True
+    assert result["delta_text"] == "<1s from now"
+
+
 def test_humanize_multi_unit_and_subminute(now_vs_deadline):
     now = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
     # 1 day, 2 hours, 3 minutes ahead.

@@ -78,9 +78,14 @@ def _iso_utc(dt: datetime.datetime) -> str:
     return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _humanize(delta_seconds: int) -> str:
-    """Render a signed second-count as 'Xd Yh Zm from now' / '... ago'."""
-    if delta_seconds == 0:
+def _humanize(delta_seconds: int, relation: str) -> str:
+    """Render a magnitude + direction as 'Xd Yh Zm from now' / '... ago'.
+
+    Driven by `relation` (not the sign of `delta_seconds`) so it stays
+    consistent with the comparison: a sub-second delta truncates to 0
+    here but is still 'past'/'future', rendered as '<1s'.
+    """
+    if relation == "now":
         return "now"
     seconds = abs(delta_seconds)
     days, rem = divmod(seconds, 86400)
@@ -93,10 +98,10 @@ def _humanize(delta_seconds: int) -> str:
         parts.append(f"{hours}h")
     if minutes:
         parts.append(f"{minutes}m")
-    if not parts:  # sub-minute delta
-        parts.append(f"{seconds}s")
+    if not parts:  # sub-minute magnitude
+        parts.append(f"{seconds}s" if seconds else "<1s")
     body = " ".join(parts)
-    return f"{body} ago" if delta_seconds < 0 else f"{body} from now"
+    return f"{body} ago" if relation == "past" else f"{body} from now"
 
 
 def compare(now: datetime.datetime, deadline: datetime.datetime) -> dict:
@@ -105,19 +110,24 @@ def compare(now: datetime.datetime, deadline: datetime.datetime) -> dict:
     Both inputs must be timezone-aware; subtracting aware datetimes
     compares true instants regardless of their offsets.
     """
-    delta_seconds = int((deadline - now).total_seconds())
-    if delta_seconds > 0:
+    delta = deadline - now
+    # Decide past/future from the raw timedelta, not from
+    # int(total_seconds()): the int truncates toward zero, so a deadline
+    # a fraction of a second in the past/future would otherwise round to
+    # 0 and be mislabelled "now".
+    if delta > datetime.timedelta(0):
         relation = "future"
-    elif delta_seconds < 0:
+    elif delta < datetime.timedelta(0):
         relation = "past"
     else:
         relation = "now"
+    delta_seconds = int(delta.total_seconds())
     return {
         "now": _iso_utc(now),
         "deadline": _iso_utc(deadline),
         "relation": relation,
         "delta_seconds": delta_seconds,
-        "delta_text": _humanize(delta_seconds),
+        "delta_text": _humanize(delta_seconds, relation),
         "deadline_elapsed": relation == "past",
         "still_time_to_act": relation == "future",
         "error": None,

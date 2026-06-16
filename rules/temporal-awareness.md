@@ -20,15 +20,15 @@ Before any proactive action — reminder, alert, message, suggestion — ground 
 
 ## Past vs future — compute it, don't eyeball it
 
-Any determination of *past vs future*, *deadline elapsed*, or *still time to act* MUST be computed against the real current instant — never asserted from prose judgment. You convert offsets correctly but then skip the comparison and label things "already passed" from vibes.
+Any determination of *past vs future*, *deadline elapsed*, or *still time to act* MUST be computed against the real current instant via the `now-vs-deadline` helper — never asserted from prose judgment.
 
-Resolve the deadline to a timezone-aware instant (do the offset conversion, e.g. `11:00 EDT` → `15:00 UTC`), then call the `now-vs-deadline` helper. It compares against the actual clock and returns `relation` (`past`/`future`/`now`), the signed delta, and `deadline_elapsed`:
+Resolve the deadline to a timezone-aware instant (do the offset conversion, e.g. `11:00 EDT` → `15:00 UTC`), then call the helper. It compares against the actual clock and returns `relation` (`past`/`future`/`now`), the signed delta, and `deadline_elapsed`:
 
 ```bash
 python3 /home/node/.claude/skills/tessl__now-vs-deadline/scripts/now-vs-deadline.py --deadline "2026-06-12T15:00:00Z"
 ```
 
-Act on its `relation` / `deadline_elapsed` — do not override it with your own read of the clock. The comparison is instant-only and location-agnostic. Reference incident (2026-06-12): a maintenance alert declared the 15:00 UTC Hertz pickup "already passed" at 13:10 UTC — ~2h early — because it converted the offset right but never compared the two instants.
+Act on its `relation` / `deadline_elapsed` — do not override it with your own read of the clock. The comparison is instant-only and location-agnostic.
 
 ## This is reasoning, not rules
 

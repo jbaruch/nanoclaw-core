@@ -20,15 +20,7 @@ Before any proactive action — reminder, alert, message, suggestion — ground 
 
 ## Past vs future — compute it, don't eyeball it
 
-Any determination of *past vs future*, *deadline elapsed*, or *still time to act* MUST be computed against the real current instant via the `now-vs-deadline` helper — never asserted from prose judgment.
-
-Resolve the deadline to a timezone-aware instant (do the offset conversion, e.g. `11:00 EDT` → `15:00 UTC`), then call the helper. It compares against the actual clock and returns `relation` (`past`/`future`/`now`), the signed delta, and `deadline_elapsed`:
-
-```bash
-python3 /home/node/.claude/skills/tessl__now-vs-deadline/scripts/now-vs-deadline.py --deadline "2026-06-12T15:00:00Z"
-```
-
-Act on its `relation` / `deadline_elapsed` — do not override it with your own read of the clock. The comparison is instant-only and location-agnostic.
+Any determination of *past vs future*, *deadline elapsed*, or *still time to act* MUST be computed against the real current instant via the `now-vs-deadline` helper — never asserted from prose judgment. Resolve the deadline to a timezone-aware instant first (do the offset conversion, e.g. `11:00 EDT` → `15:00 UTC`), then run the `now-vs-deadline` skill and act on its verdict rather than your own read of the clock. The comparison is instant-only and location-agnostic.
 
 ## This is reasoning, not rules
 

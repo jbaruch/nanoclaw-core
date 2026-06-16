@@ -60,6 +60,9 @@
     },
     "query-history": {
       "path": "skills/query-history/SKILL.md"
+    },
+    "now-vs-deadline": {
+      "path": "skills/now-vs-deadline/SKILL.md"
     }
   }
 }

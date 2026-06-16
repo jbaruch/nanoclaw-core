@@ -36,10 +36,20 @@ skills/
     SKILL.md                 # Skill definition consumed by the tessl runtime
     scripts/
       container-uptime.py   # Reads /.dockerenv mtime to compute container uptime
+  query-history/
+    SKILL.md
+    scripts/
+      query-message-history.py  # Keyword/sender search over messages.db
+  now-vs-deadline/
+    SKILL.md
+    scripts/
+      now-vs-deadline.py    # Deterministic past/future comparison vs the current instant
 
 tests/
   conftest.py               # Shared fixtures; loads kebab-case scripts via importlib
   test_container_uptime.py
+  test_query_message_history.py
+  test_now_vs_deadline.py
 
 .github/
   workflows/

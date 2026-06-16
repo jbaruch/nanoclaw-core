@@ -57,3 +57,16 @@ def query_message_history():
         "query_message_history_under_test",
         "skills/query-history/scripts/query-message-history.py",
     )
+
+
+@pytest.fixture
+def now_vs_deadline():
+    """Fresh-loaded module under test for the now-vs-deadline skill's
+    deadline-comparison helper. The module exposes `compare(now,
+    deadline)` and `parse_deadline(str)` as pure functions so tests can
+    pin `now` and assert deterministic past/future output. Per-test
+    reload matches the pattern above."""
+    return _load(
+        "now_vs_deadline_under_test",
+        "skills/now-vs-deadline/scripts/now-vs-deadline.py",
+    )

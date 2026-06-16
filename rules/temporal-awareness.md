@@ -18,6 +18,10 @@ Before any proactive action — reminder, alert, message, suggestion — ground 
    - Is it obvious they already know? (traveling to a conference = they checked out)
    - Is the timing appropriate? (work alert at 3am local time = probably not)
 
+## Past vs future — compute it, don't eyeball it
+
+Any determination of *past vs future*, *deadline elapsed*, or *still time to act* MUST be computed against the real current instant via the `now-vs-deadline` helper — never asserted from prose judgment. Resolve the deadline to a timezone-aware instant first (do the offset conversion, e.g. `11:00 EDT` → `15:00 UTC`), then run the `now-vs-deadline` skill and act on its verdict rather than your own read of the clock. The comparison is instant-only and location-agnostic.
+
 ## This is reasoning, not rules
 
 Don't look for a matching rule. Ask: *"If I were a human assistant who knew the owner's full schedule right now, would I reach out about this at this moment?"*

@@ -98,7 +98,8 @@ def _require_payload(payload: dict | None) -> dict:
     """Narrow a `_run` payload to a present dict for tests on the success
     and canonical-error paths, which always print a JSON payload. Usage-error
     paths return None and must not call this."""
-    assert payload is not None, "expected a JSON payload but stdout was empty"
+    if payload is None:
+        raise AssertionError("expected a JSON payload but stdout was empty")
     return payload
 
 

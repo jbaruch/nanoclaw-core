@@ -20,6 +20,8 @@ import json
 import sqlite3
 from contextlib import redirect_stderr, redirect_stdout
 
+import pytest
+
 
 def _populate_db(path: str) -> None:
     """Build a tiny fixed dataset deterministically.
@@ -64,7 +66,13 @@ def _populate_db(path: str) -> None:
     conn.close()
 
 
-def _run(module, argv, monkeypatch, db_path=None, chat_jid="chatA"):
+def _run(
+    module,
+    argv: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    db_path: str | None = None,
+    chat_jid: str | None = "chatA",
+) -> tuple[int, dict | None, str]:
     """Invoke `main(argv)` with env vars set, capturing stdout/stderr.
 
     Returns (exit_code, parsed_stdout_payload_or_None, stderr_text).
@@ -84,6 +92,14 @@ def _run(module, argv, monkeypatch, db_path=None, chat_jid="chatA"):
     stdout = out.getvalue()
     payload = json.loads(stdout) if stdout.strip() else None
     return rc, payload, err.getvalue()
+
+
+def _require_payload(payload: dict | None) -> dict:
+    """Narrow a `_run` payload to a present dict for tests on the success
+    and canonical-error paths, which always print a JSON payload. Usage-error
+    paths return None and must not call this."""
+    assert payload is not None, "expected a JSON payload but stdout was empty"
+    return payload
 
 
 def test_no_filters_is_usage_error(query_message_history, monkeypatch):
@@ -141,6 +157,7 @@ def test_missing_chat_jid_returns_canonical_error(query_message_history, monkeyp
     )
     assert rc == 1
     assert "NANOCLAW_CHAT_JID" in stderr
+    payload = _require_payload(payload)
     assert payload["rows"] == []
     assert payload["error"].startswith("NANOCLAW_CHAT_JID")
     assert payload["query"] == {"keyword": "release", "sender": None, "limit": 20}
@@ -156,6 +173,7 @@ def test_keyword_filter_returns_matching_rows_in_chat(query_message_history, mon
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     contents = [r["content"] for r in payload["rows"]]
     # Two chatA messages contain 'release plan'; chatB row is excluded.
     # Also excluded: 'replying to release' (different substring),
@@ -176,6 +194,7 @@ def test_sender_filter_uses_sender_name_substring(query_message_history, monkeyp
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     # Four chatA rows where sender_name LIKE '%alice%' (ids 1, 3, 6, 7).
     # The chatB alice row (id=4) is excluded by the chat_jid filter.
     senders = {r["sender_name"] for r in payload["rows"]}
@@ -193,6 +212,7 @@ def test_combined_filters_AND(query_message_history, monkeypatch, tmp_path):
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     # Alice has two release-plan-substring rows in chatA: id=1 ('release
     # plan for Q3') is the only one that matches 'release plan' AND
     # alice. id=2 is Bob.
@@ -216,6 +236,7 @@ def test_keyword_underscore_wildcard_is_escaped(query_message_history, monkeypat
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     ids = sorted(r["id"] for r in payload["rows"])
     assert ids == [6], (
         f"Expected only id=6 (literal `john_doe`), got {ids}. "
@@ -238,6 +259,7 @@ def test_keyword_percent_wildcard_is_escaped(query_message_history, monkeypatch,
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     assert payload["rows"] == [], (
         f"Expected empty result for literal `%doe` (no row contains it), "
         f"got {[r['id'] for r in payload['rows']]}. The `%` wildcard is "
@@ -255,6 +277,7 @@ def test_limit_caps_results(query_message_history, monkeypatch, tmp_path):
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     assert len(payload["rows"]) == 2
     assert payload["query"]["limit"] == 2
 
@@ -273,6 +296,7 @@ def test_db_missing_returns_canonical_error(query_message_history, monkeypatch, 
     )
     assert rc == 1
     assert "DB access failed" in stderr
+    payload = _require_payload(payload)
     assert payload["rows"] == []
     assert payload["error"].startswith("DB access failed")
 
@@ -287,6 +311,7 @@ def test_payload_shape_is_canonical_on_success(query_message_history, monkeypatc
         db_path=db_path,
     )
     assert rc == 0
+    payload = _require_payload(payload)
     assert set(payload.keys()) == {"rows", "chat_jid", "query", "error"}
     assert payload["chat_jid"] == "chatA"
     if payload["rows"]:

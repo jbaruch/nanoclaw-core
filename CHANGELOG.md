@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.112 — 2026-07-02
+
+### Changed — backfill CHANGELOG entries for released versions 0.1.109–0.1.111
+
+Versions 0.1.109–0.1.111 shipped without CHANGELOG entries. Every released version now has a heading; the entries are reconstructed from the merge commits that produced each release. No code change.
+
+## 0.1.111 — 2026-07-02
+
+### Added — gate language diagnostics in CI with pyright (`jbaruch/nanoclaw-core#53`)
+
+Adopt a pyright zero-findings gate: `pyrightconfig.json` resolves the skill-bundle layout via per-bundle `executionEnvironments`, and a `python -m pyright --warnings skills/ tests/` step runs in CI after ruff and before pytest (`--warnings` fails the step on warnings, not just errors). The first run surfaced 24 real type findings in `tests/test_query_message_history.py` — a `reportArgumentType` on a `chat_jid=None` path and 23 Optional-subscript accesses on the `dict | None` payload — fixed with explicit param typing and an `if payload is None: raise` reader, no blanket suppressions. Adds a weekly Dependabot for the pinned dev toolchain.
+
+## 0.1.110 — 2026-07-02
+
+### Changed — refresh coding-policy PR review workflows (`jbaruch/nanoclaw-core#55`)
+
+Upgrade the gh-aw `jbaruch/coding-policy` PR review workflow templates to the latest published version.
+
+## 0.1.109 — 2026-07-01
+
+### Changed — refresh coding-policy PR review workflows (`jbaruch/nanoclaw-core#54`)
+
+Upgrade the gh-aw `jbaruch/coding-policy` PR review workflow templates to the latest published version.
+
 ## 0.1.108 — 2026-06-15
 
 ### Skills + Rules — deterministic past/future via `now-vs-deadline` (`jbaruch/nanoclaw-core#51`)

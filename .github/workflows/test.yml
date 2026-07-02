@@ -31,5 +31,11 @@ jobs:
           python -m ruff check tests/
           python -m ruff format --check tests/
 
+      # Diagnostics gate per `jbaruch/coding-policy: language-diagnostics`
+      # — runs pyright at zero findings before tests, resolving the
+      # skill-bundle sys.path layout via pyrightconfig.json.
+      - name: Type check (pyright)
+        run: python -m pyright skills/ tests/
+
       - name: Pytest
         run: python -m pytest

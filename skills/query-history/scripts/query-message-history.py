@@ -180,7 +180,7 @@ def make_payload(
 
     return {
         "rows": rows,
-        "chat_jid": chat_jid,
+        "chat_jid": clip(chat_jid),
         "query": {
             "keyword": clip(keyword),
             "sender": clip(sender),

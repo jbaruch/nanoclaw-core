@@ -444,6 +444,28 @@ def test_error_path_payload_is_capped_too(query_message_history, monkeypatch):
     assert payload["truncated"] is True
 
 
+def test_giant_chat_jid_is_clipped_in_envelope(query_message_history, monkeypatch, tmp_path):
+    # chat_jid comes from the environment, but the envelope contract
+    # bounds every string echoed into the payload — a pathological
+    # NANOCLAW_CHAT_JID must not bust the budget on the zero-row
+    # DB-error path.
+    module = query_message_history
+    bogus = tmp_path / "no-such-db.sqlite"
+    rc, payload, _stderr = _run(
+        module,
+        ["--keyword", "x"],
+        monkeypatch,
+        db_path=str(bogus),
+        chat_jid="j" * (2 * module.MAX_OUTPUT_BYTES),
+    )
+    assert rc == 1
+    payload = _require_payload(payload)
+    raw = json.dumps(payload)
+    assert len(raw.encode("utf-8")) + 1 <= module.MAX_OUTPUT_BYTES
+    assert len(payload["chat_jid"]) == module.ENVELOPE_FIELD_CHARS
+    assert payload["truncated"] is True
+
+
 def test_oversized_content_is_clipped_per_row(query_message_history, monkeypatch, tmp_path):
     db_path = str(tmp_path / "db.sqlite")
     conn = sqlite3.connect(db_path)

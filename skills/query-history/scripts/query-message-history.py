@@ -68,9 +68,10 @@ DEFAULT_LIMIT = 20
 # Anything above this defeats the context-budget guard the rule set enforces.
 MAX_LIMIT = 50
 # Serialized-output budget mirrors the 25 KB single-tool-result limit in
-# `rules/query-size-limits.md`. The row cap alone doesn't enforce it — a
-# handful of long messages can blow the budget at 50 rows.
-MAX_OUTPUT_BYTES = 25 * 1024
+# `rules/query-size-limits.md`. 25 KB = 25,000 bytes (the rule says KB,
+# not KiB). The row cap alone doesn't enforce it — a handful of long
+# messages can blow the budget at 50 rows.
+MAX_OUTPUT_BYTES = 25_000
 # Per-row content clip applied before whole rows are dropped: favors
 # breadth (more rows, each capped) over depth (few complete rows). Chat
 # messages are rarely this long; pasted logs and forwarded walls of text

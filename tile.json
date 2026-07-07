@@ -55,9 +55,6 @@
     }
   },
   "skills": {
-    "status": {
-      "path": "skills/status/SKILL.md"
-    },
     "query-history": {
       "path": "skills/query-history/SKILL.md"
     },

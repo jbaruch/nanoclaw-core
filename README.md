@@ -31,7 +31,6 @@ tessl install jbaruch/nanoclaw-core
 
 | Skill | Description |
 |-------|-------------|
-| [status](skills/status/SKILL.md) | One-line status emit on a defined cadence |
 | [query-history](skills/query-history/SKILL.md) | Search `messages.db` by keyword and/or sender; companion to `context-recovery` |
 | [now-vs-deadline](skills/now-vs-deadline/SKILL.md) | Deterministically compare a deadline against the current instant; mandated path for `temporal-awareness` |
 

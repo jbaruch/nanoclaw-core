@@ -1,11 +1,13 @@
 # Changelog
 
-## 0.1.119 — 2026-07-08
+### Skills — move `/status` to nanoclaw-trusted (`jbaruch/nanoclaw-core#68`)
 
+Core ships into every container, so the `/status` skill's "no access restrictions" declaration let untrusted-group participants enumerate workspace mounts, group-folder filenames, IPC presence, and container restart timing — reconnaissance the untrusted tile's security rules exist to prevent. (The task-metadata half of the original finding was already mitigated host-side: `writeTasksSnapshot` never writes `current_tasks.json` into untrusted containers.) The skill, `container-uptime.py`, and its tests now live in `jbaruch/nanoclaw-trusted` (`jbaruch/nanoclaw-trusted#71`) — tile placement is host-enforced mount scope, closing the leak structurally instead of via prompt-level redaction. The `tessl__status` mount path is unchanged; untrusted groups keep `whoami` (untrusted tile) as their tier-appropriate "what can you do here" answer. Surface sync: `tile.json`, `pyrightconfig.json`, README, copilot-instructions, conftest.
+
+## 0.1.119 — 2026-07-08
 ### Skills — query-history output cap + `--offset` batching (`jbaruch/nanoclaw-core#70`, `jbaruch/nanoclaw-core#73`)
 
 `query-message-history.py` capped rows at 50 but returned full `content` per row, so a few pasted-log messages could blow the 25 KB single-tool-result budget from `rules/query-size-limits.md` — the helper violating the rule it exists to support. The serialized payload is now capped at `MAX_OUTPUT_BYTES`: over-long row content clips to `PER_ROW_CONTENT_CHARS` first (per-row `content_truncated`), then whole rows drop oldest-first (`rows_dropped`, top-level `truncated`). The over-limit error message also pointed at "OFFSET-based batching" the CLI didn't expose (#73); `--offset` now exists (negative rejected at exit 2), wired as `LIMIT ? OFFSET ?`, echoed in the `query` block. SKILL.md documents the new payload shape and the narrow-or-batch response to a truncated result. Tests cover offset paging, per-row clip, budget-cap row drops, and negative-offset rejection.
-
 ## 0.1.118 — 2026-07-07
 
 ### Docs — refresh contributor/agent docs for conditional rules, pyright, and publish behavior (`jbaruch/nanoclaw-core#76`, `jbaruch/nanoclaw-core#69`, `jbaruch/nanoclaw-core#71`)

@@ -31,14 +31,14 @@ Output (stdout, single-line JSON):
       "now": "<ISO8601 UTC>",
       "deadline": "<ISO8601 UTC>",
       "relation": "past" | "future" | "now",
-      "delta_seconds": int,        # truncating integer seconds of the
-                                   # delta (int(total_seconds()), toward
-                                   # zero). Sign is meaningful only when
-                                   # non-zero (>0 future, <0 past); a
-                                   # sub-second past/future delta reads 0
-                                   # while `relation` still says past/
-                                   # future. `relation` is authoritative —
-                                   # never classify from this value alone.
+      "delta_seconds": int,        # int(delta.total_seconds()) — truncates
+                                   # toward zero. Sign is meaningful only
+                                   # when non-zero (>0 future, <0 past);
+                                   # a sub-second past/future delta reads
+                                   # 0 while `relation` still says "past"
+                                   # or "future". `relation` is the
+                                   # authority — never classify from
+                                   # delta_seconds alone.
       "delta_text": str,           # e.g. "1h 49m from now", "2h 30m ago"
       "deadline_elapsed": bool,    # relation == "past"
       "still_time_to_act": bool,   # relation == "future"

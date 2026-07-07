@@ -1,8 +1,9 @@
 name: Review & Publish Tile
 
-permissions:
-  id-token: write
-  contents: write
+# Least privilege per job: nothing at workflow level. The gate job runs
+# the pip-installed test toolchain under a read-only token; only the
+# publish job holds id-token/contents write and TESSL_TOKEN.
+permissions: {}
 
 on:
   push:
@@ -11,10 +12,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Gate publishing on the same lint/type/test suite the Test workflow
+  # runs on PRs (jbaruch/nanoclaw-core#74). Test previously ran as a
+  # separate push-triggered workflow with no ordering guarantee against
+  # this one, so a broken merge commit could publish before its tests
+  # failed. Calling the reusable workflow keeps one definition of the
+  # suite — no drift between PR checks and the publish gate.
+  gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
   publish:
+    needs: gate
+    permissions:
+      id-token: write
+      contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           # Required by jbaruch/coding-policy/.github/actions/skill-review:
           # the action runs `git diff $BEFORE..HEAD` to find changed skills.
@@ -22,7 +38,7 @@ jobs:
           # `fetch-depth: 0` keeps the path predictable.
           fetch-depth: 0
 
-      - uses: tesslio/setup-tessl@v2
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         with:
           token: ${{ secrets.TESSL_TOKEN }}
 
@@ -45,6 +61,6 @@ jobs:
       - name: Stamp CHANGELOG
         uses: jbaruch/coding-policy/.github/actions/stamp-changelog@de18c1b923ed55afed7fb4c96efe35926c0e7bbf # main
 
-      - uses: tesslio/patch-version-publish@v1
+      - uses: tesslio/patch-version-publish@d1363877846ebf6bc09e032e2dc8612f1d7e38dd # v1
         with:
           token: ${{ secrets.TESSL_TOKEN }}

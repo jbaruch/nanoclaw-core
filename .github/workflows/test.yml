@@ -5,16 +5,18 @@ permissions:
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # Callable as the publish workflow's gate job — main-push coverage
+  # comes from that call, so no separate `push: main` trigger (it
+  # would run the suite twice per merge).
+  workflow_call:
 
 jobs:
   pytest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip

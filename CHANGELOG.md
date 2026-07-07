@@ -1,5 +1,9 @@
 # Changelog
 
+### CI — gate publishing on ruff, pyright, and pytest (`jbaruch/nanoclaw-core#74`)
+
+The publish workflow triggered on every push to `main` independently of the `Test` workflow, so a broken merge commit could publish before its own tests failed. The lint/type/test suite now runs inside the publish workflow, before any tessl step.
+
 ## 0.1.112 — 2026-07-02
 
 ### Changed — backfill CHANGELOG entries for released versions 0.1.109–0.1.111

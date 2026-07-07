@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.116 — 2026-07-07
+
 ### CI — pin workflow actions by commit SHA (`jbaruch/nanoclaw-core#75`)
 
 `actions/checkout`, `actions/setup-python`, `tesslio/setup-tessl`, and `tesslio/patch-version-publish` were tag-pinned in a job holding `TESSL_TOKEN` and `contents: write` — a retargeted upstream tag could change release behavior without a reviewed repo diff. All workflow actions are now pinned to full commit SHAs with tag comments; the existing weekly Dependabot `github-actions` config is the renewal mechanism.

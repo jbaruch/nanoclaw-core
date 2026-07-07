@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.117 — 2026-07-07
+
 ### Skills — document the sub-second `delta_seconds` contract in now-vs-deadline (`jbaruch/nanoclaw-core#72`)
 
 The output contract documented `delta_seconds` as signed (>0 future, <0 past), but `int(delta.total_seconds())` truncates toward zero — a sub-second past/future delta reads `0` while `relation` still says `past`/`future` (deliberate, tested behavior; the code comment derives `relation` from the raw timedelta for exactly this reason). A consumer following the sign contract instead of `relation` could misclassify sub-second deadlines as exactly now. The script docstring and SKILL.md now state `relation` is authoritative and `delta_seconds` can be `0` for sub-second deltas; behavior is unchanged.

@@ -165,12 +165,18 @@ def make_payload(
     error paths so the agent (or a downstream consumer) doesn't have to
     special-case error JSON. Envelope strings clip to
     ENVELOPE_FIELD_CHARS so the zero-row envelope stays bounded on
-    every path (see cap_payload)."""
+    every path (see cap_payload); a clipped envelope field flips
+    `truncated` just like row-level cuts do."""
+    clipped = False
 
     def clip(value: Optional[str]) -> Optional[str]:
+        nonlocal clipped
         if value is None:
             return None
-        return value[:ENVELOPE_FIELD_CHARS]
+        if len(value) > ENVELOPE_FIELD_CHARS:
+            clipped = True
+            return value[:ENVELOPE_FIELD_CHARS]
+        return value
 
     return {
         "rows": rows,
@@ -181,7 +187,7 @@ def make_payload(
             "limit": limit,
             "offset": offset,
         },
-        "truncated": False,
+        "truncated": clipped,
         "rows_dropped": 0,
         "error": clip(error),
     }

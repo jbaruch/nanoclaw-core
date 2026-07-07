@@ -438,6 +438,8 @@ def test_error_path_payload_is_capped_too(query_message_history, monkeypatch):
         f"honor the tool-result budget too."
     )
     assert len(payload["query"]["keyword"]) == module.ENVELOPE_FIELD_CHARS
+    # A clipped envelope field is a truncation — the flag must say so.
+    assert payload["truncated"] is True
 
 
 def test_oversized_content_is_clipped_per_row(query_message_history, monkeypatch, tmp_path):

@@ -122,7 +122,7 @@ CI runs these in order: ruff check → ruff format → pyright → pytest. All f
 
 - Whenever a rule is added or removed, update both `tile.json` (the `rules` object) and the rules table in `README.md`.
 - Whenever a skill is added or removed, update both `tile.json` (the `skills` object) and the skills table in `README.md`.
-- The `version` field in `tile.json` follows semver; bump it for every change published to the tessl registry.
+- The `version` field in `tile.json` follows semver. The publish workflow bumps the patch version automatically on every merge to `main`; edit it by hand only for an intentional minor or major release (see gotcha 6).
 
 ### Tests
 

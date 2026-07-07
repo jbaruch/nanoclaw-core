@@ -432,10 +432,12 @@ def test_error_path_payload_is_capped_too(query_message_history, monkeypatch):
     assert rc == 1
     payload = _require_payload(payload)
     raw = json.dumps(payload)
-    assert len(raw.encode("utf-8")) <= module.MAX_OUTPUT_BYTES, (
-        f"Error-path payload is {len(raw.encode('utf-8'))} bytes — exceeds "
-        f"MAX_OUTPUT_BYTES ({module.MAX_OUTPUT_BYTES}). Error paths must "
-        f"honor the tool-result budget too."
+    # +1 budgets print()'s trailing newline — the contract bounds the
+    # full stdout tool result, matching cap_payload's size().
+    assert len(raw.encode("utf-8")) + 1 <= module.MAX_OUTPUT_BYTES, (
+        f"Error-path stdout is {len(raw.encode('utf-8')) + 1} bytes with "
+        f"newline — exceeds MAX_OUTPUT_BYTES ({module.MAX_OUTPUT_BYTES}). "
+        f"Error paths must honor the tool-result budget too."
     )
     assert len(payload["query"]["keyword"]) == module.ENVELOPE_FIELD_CHARS
     # A clipped envelope field is a truncation — the flag must say so.
@@ -523,10 +525,12 @@ def test_output_capped_to_budget_drops_oldest_rows(query_message_history, monkey
     payload = _require_payload(payload)
     module = query_message_history
     raw = json.dumps(payload)
-    assert len(raw.encode("utf-8")) <= module.MAX_OUTPUT_BYTES, (
-        f"Serialized payload is {len(raw.encode('utf-8'))} bytes — exceeds "
-        f"MAX_OUTPUT_BYTES ({module.MAX_OUTPUT_BYTES}). The output cap is "
-        f"not enforcing the rules/query-size-limits.md budget."
+    # +1 budgets print()'s trailing newline — the contract bounds the
+    # full stdout tool result, matching cap_payload's size().
+    assert len(raw.encode("utf-8")) + 1 <= module.MAX_OUTPUT_BYTES, (
+        f"Serialized stdout is {len(raw.encode('utf-8')) + 1} bytes with "
+        f"newline — exceeds MAX_OUTPUT_BYTES ({module.MAX_OUTPUT_BYTES}). "
+        f"The output cap is not enforcing the rules/query-size-limits.md budget."
     )
     assert payload["truncated"] is True
     assert payload["rows_dropped"] > 0

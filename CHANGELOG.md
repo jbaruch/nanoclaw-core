@@ -13,6 +13,7 @@ The output contract documented `delta_seconds` as signed (>0 future, <0 past), b
 ### CI — gate publishing on ruff, pyright, and pytest (`jbaruch/nanoclaw-core#74`)
 
 The publish workflow triggered on every push to `main` independently of the `Test` workflow, so a broken merge commit could publish before its own tests failed. `test.yml` is now a reusable (`workflow_call`) workflow; the publish workflow runs it as a `gate` job the `publish` job `needs`. One suite definition serves PR checks and the publish gate (review feedback: no drift between duplicated step lists), and per-job least privilege keeps the pip-installed toolchain under a read-only token — only the `publish` job holds `id-token`/`contents: write` and `TESSL_TOKEN`. `test.yml` drops its `push: main` trigger; main-push coverage comes from the gate call.
+
 ## 0.1.112 — 2026-07-02
 
 ### Changed — backfill CHANGELOG entries for released versions 0.1.109–0.1.111

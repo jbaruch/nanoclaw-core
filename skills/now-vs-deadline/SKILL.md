@@ -7,7 +7,7 @@ description: Deterministically decide whether a deadline/event is past or future
 
 Process steps in order. Do not skip ahead.
 
-Compares a deadline against the actual current instant and returns past/future plus the signed delta. Use it whenever you would otherwise assert that a deadline has elapsed or that there is still time to act — `rules/temporal-awareness.md` requires the comparison to be computed here, not inferred.
+Compares a deadline against the actual current instant and returns past/future plus the delta in integer seconds. Use it whenever you would otherwise assert that a deadline has elapsed or that there is still time to act — `rules/temporal-awareness.md` requires the comparison to be computed here, not inferred.
 
 ## Step 1 — Resolve the deadline to a timezone-aware instant
 

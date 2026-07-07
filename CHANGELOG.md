@@ -1,5 +1,9 @@
 # Changelog
 
+### CI — pin workflow actions by commit SHA (`jbaruch/nanoclaw-core#75`)
+
+`actions/checkout`, `actions/setup-python`, `tesslio/setup-tessl`, and `tesslio/patch-version-publish` were tag-pinned in a job holding `TESSL_TOKEN` and `contents: write` — a retargeted upstream tag could change release behavior without a reviewed repo diff. All workflow actions are now pinned to full commit SHAs with tag comments; the existing weekly Dependabot `github-actions` config is the renewal mechanism.
+
 ### CI — gate publishing on ruff, pyright, and pytest (`jbaruch/nanoclaw-core#74`)
 
 The publish workflow triggered on every push to `main` independently of the `Test` workflow, so a broken merge commit could publish before its own tests failed. The lint/type/test suite now runs inside the publish workflow, before any tessl step.

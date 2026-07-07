@@ -1,11 +1,16 @@
 """Tests for skills/query-history/scripts/query-message-history.py.
 
 Coverage:
-  - argument validation (no filters, non-positive limit, over-cap limit)
+  - argument validation (no filters, non-positive limit, over-cap limit,
+    negative offset)
   - missing NANOCLAW_CHAT_JID returns exit 1 with canonical payload
   - keyword-only / sender-only / combined filters return matching rows
   - LIKE wildcard escape (`%` and `_` in user input match literally,
     not as wildcards) — verified via near-miss fixture rows
+  - --offset pages past earlier rows in timestamp-DESC order
+  - output-size cap: per-row content clip (content_truncated) and
+    oldest-first row drops (rows_dropped) keep the serialized payload
+    within MAX_OUTPUT_BYTES
   - DB-access failure returns exit 1 with canonical payload
   - payload shape consistency
 
@@ -161,7 +166,7 @@ def test_missing_chat_jid_returns_canonical_error(query_message_history, monkeyp
     payload = _require_payload(payload)
     assert payload["rows"] == []
     assert payload["error"].startswith("NANOCLAW_CHAT_JID")
-    assert payload["query"] == {"keyword": "release", "sender": None, "limit": 20}
+    assert payload["query"] == {"keyword": "release", "sender": None, "limit": 20, "offset": 0}
 
 
 def test_keyword_filter_returns_matching_rows_in_chat(query_message_history, monkeypatch, tmp_path):
@@ -313,8 +318,17 @@ def test_payload_shape_is_canonical_on_success(query_message_history, monkeypatc
     )
     assert rc == 0
     payload = _require_payload(payload)
-    assert set(payload.keys()) == {"rows", "chat_jid", "query", "error"}
+    assert set(payload.keys()) == {
+        "rows",
+        "chat_jid",
+        "query",
+        "truncated",
+        "rows_dropped",
+        "error",
+    }
     assert payload["chat_jid"] == "chatA"
+    assert payload["truncated"] is False
+    assert payload["rows_dropped"] == 0
     if payload["rows"]:
         assert set(payload["rows"][0].keys()) == {
             "id",
@@ -322,5 +336,136 @@ def test_payload_shape_is_canonical_on_success(query_message_history, monkeypatc
             "sender_name",
             "content",
             "is_from_me",
+            "content_truncated",
         }
         assert isinstance(payload["rows"][0]["is_from_me"], bool)
+        assert payload["rows"][0]["content_truncated"] is False
+
+
+def test_negative_offset_is_usage_error(query_message_history, monkeypatch):
+    rc, payload, stderr = _run(
+        query_message_history, ["--keyword", "x", "--offset", "-1"], monkeypatch
+    )
+    assert rc == 2
+    assert payload is None
+    assert "--offset=-1" in stderr
+
+
+def test_offset_batches_past_earlier_rows(query_message_history, monkeypatch, tmp_path):
+    db_path = str(tmp_path / "db.sqlite")
+    _populate_db(db_path)
+    # Alice has four chatA rows (ids 7, 6, 3, 1 in timestamp-DESC order).
+    # --limit 2 --offset 2 must return the third and fourth rows of that
+    # ordering — the batch after the first --limit 2 page.
+    rc, payload, _ = _run(
+        query_message_history,
+        ["--sender", "alice", "--limit", "2", "--offset", "2"],
+        monkeypatch,
+        db_path=db_path,
+    )
+    assert rc == 0
+    payload = _require_payload(payload)
+    ids = [r["id"] for r in payload["rows"]]
+    assert ids == [3, 1], (
+        f"Expected the second page (ids [3, 1]) of Alice's timestamp-DESC "
+        f"rows, got {ids}. --offset is not being applied to the query."
+    )
+    assert payload["query"]["offset"] == 2
+
+
+def test_oversized_content_is_clipped_per_row(query_message_history, monkeypatch, tmp_path):
+    db_path = str(tmp_path / "db.sqlite")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            chat_jid TEXT,
+            sender_name TEXT,
+            content TEXT,
+            timestamp TEXT,
+            is_from_me INTEGER
+        )"""
+    )
+    # One row whose content exceeds the per-row clip: a 6000-char wall
+    # around a matchable keyword.
+    conn.execute(
+        "INSERT INTO messages VALUES (1, 'chatA', 'Alice (@alice)', ?, '2026-01-01T10:00:00', 0)",
+        ("wall " + "x" * 6000,),
+    )
+    conn.commit()
+    conn.close()
+    rc, payload, _ = _run(
+        query_message_history,
+        ["--keyword", "wall"],
+        monkeypatch,
+        db_path=db_path,
+    )
+    assert rc == 0
+    payload = _require_payload(payload)
+    module = query_message_history
+    assert len(payload["rows"]) == 1
+    row = payload["rows"][0]
+    assert len(row["content"]) == module.PER_ROW_CONTENT_CHARS, (
+        f"Expected content clipped to PER_ROW_CONTENT_CHARS "
+        f"({module.PER_ROW_CONTENT_CHARS}), got {len(row['content'])} chars."
+    )
+    assert row["content_truncated"] is True
+    assert payload["truncated"] is True
+    assert payload["rows_dropped"] == 0
+
+
+def test_output_capped_to_budget_drops_oldest_rows(query_message_history, monkeypatch, tmp_path):
+    db_path = str(tmp_path / "db.sqlite")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            chat_jid TEXT,
+            sender_name TEXT,
+            content TEXT,
+            timestamp TEXT,
+            is_from_me INTEGER
+        )"""
+    )
+    # 20 rows of ~3900 chars each: under the per-row clip, but ~78 KB
+    # total — far over MAX_OUTPUT_BYTES. The cap must drop oldest rows
+    # (lowest timestamps) and keep the newest.
+    rows = [
+        (
+            i,
+            "chatA",
+            "Alice (@alice)",
+            f"bigmsg {i:02d} " + "y" * 3890,
+            f"2026-01-{i:02d}T10:00:00",
+            0,
+        )
+        for i in range(1, 21)
+    ]
+    conn.executemany("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?)", rows)
+    conn.commit()
+    conn.close()
+    rc, payload, _ = _run(
+        query_message_history,
+        ["--keyword", "bigmsg", "--limit", "20"],
+        monkeypatch,
+        db_path=db_path,
+    )
+    assert rc == 0
+    payload = _require_payload(payload)
+    module = query_message_history
+    raw = json.dumps(payload)
+    assert len(raw.encode("utf-8")) <= module.MAX_OUTPUT_BYTES, (
+        f"Serialized payload is {len(raw.encode('utf-8'))} bytes — exceeds "
+        f"MAX_OUTPUT_BYTES ({module.MAX_OUTPUT_BYTES}). The output cap is "
+        f"not enforcing the rules/query-size-limits.md budget."
+    )
+    assert payload["truncated"] is True
+    assert payload["rows_dropped"] > 0
+    assert len(payload["rows"]) + payload["rows_dropped"] == 20
+    # Newest-first ordering preserved; drops came off the oldest tail.
+    kept_ids = [r["id"] for r in payload["rows"]]
+    assert kept_ids == sorted(kept_ids, reverse=True)
+    assert kept_ids[0] == 20, (
+        f"Newest row (id=20) must survive the cap; kept ids: {kept_ids}. "
+        f"Rows must drop oldest-first."
+    )

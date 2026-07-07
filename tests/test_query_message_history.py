@@ -373,6 +373,49 @@ def test_offset_batches_past_earlier_rows(query_message_history, monkeypatch, tm
     assert payload["query"]["offset"] == 2
 
 
+def test_offset_paging_is_deterministic_on_equal_timestamps(
+    query_message_history, monkeypatch, tmp_path
+):
+    db_path = str(tmp_path / "db.sqlite")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            chat_jid TEXT,
+            sender_name TEXT,
+            content TEXT,
+            timestamp TEXT,
+            is_from_me INTEGER
+        )"""
+    )
+    # Four rows sharing ONE timestamp. ORDER BY timestamp alone leaves
+    # their relative order undefined, so successive --offset pages could
+    # duplicate or skip rows. The id DESC tie-breaker makes the total
+    # order [4, 3, 2, 1]; two --limit 2 pages must partition it exactly.
+    rows = [
+        (i, "chatA", "Alice (@alice)", f"burst msg {i}", "2026-01-01T10:00:00", 0)
+        for i in range(1, 5)
+    ]
+    conn.executemany("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?)", rows)
+    conn.commit()
+    conn.close()
+    pages = []
+    for offset in (0, 2):
+        rc, payload, _ = _run(
+            query_message_history,
+            ["--keyword", "burst", "--limit", "2", "--offset", str(offset)],
+            monkeypatch,
+            db_path=db_path,
+        )
+        assert rc == 0
+        pages.append([r["id"] for r in _require_payload(payload)["rows"]])
+    assert pages == [[4, 3], [2, 1]], (
+        f"Equal-timestamp rows must page deterministically via the id DESC "
+        f"tie-breaker (expected [[4, 3], [2, 1]], got {pages}). Duplicated "
+        f"or skipped ids mean the total order is undefined across pages."
+    )
+
+
 def test_oversized_content_is_clipped_per_row(query_message_history, monkeypatch, tmp_path):
     db_path = str(tmp_path / "db.sqlite")
     conn = sqlite3.connect(db_path)

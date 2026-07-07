@@ -112,7 +112,7 @@ def build_query(has_keyword: bool, has_sender: bool) -> str:
         SELECT id, timestamp, sender_name, content, is_from_me
         FROM messages
         WHERE {' AND '.join(where)}
-        ORDER BY timestamp DESC
+        ORDER BY timestamp DESC, id DESC
         LIMIT ? OFFSET ?
     """
 
@@ -178,7 +178,9 @@ def cap_payload(payload: dict, max_bytes: int = MAX_OUTPUT_BYTES) -> dict:
     when a row exceeds the per-row clip."""
 
     def size(p: dict) -> int:
-        return len(json.dumps(p).encode("utf-8"))
+        # +1 for the trailing newline print() appends — the budget bounds
+        # the full stdout tool result, not just the JSON body.
+        return len(json.dumps(p).encode("utf-8")) + 1
 
     for row in payload["rows"]:
         content = row.get("content") or ""

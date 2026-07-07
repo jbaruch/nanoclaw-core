@@ -13,11 +13,13 @@
 ```
 tile.json                    # Tile manifest: name, version, rules/skills registry
 README.md                    # Human-readable overview + rules/skills tables
-CHANGELOG.md                 # Version history and unreleased changes
+CHANGELOG.md                 # Version history; un-headed `### ` blocks at the top
+                             # are stamped with the version heading at publish
 pyproject.toml               # pytest config + ruff lint (scoped to tests/ only)
-requirements-dev.txt         # Dev dependencies: pytest==8.3.4, ruff==0.7.4
+pyrightconfig.json           # pyright module resolution for the skill-bundle layout
+requirements-dev.txt         # Dev dependencies: pyright, pytest, ruff (pinned)
 
-rules/                       # 12 always-on behavioral rule files (Markdown)
+rules/                       # 12 behavioral rule files (11 always-on, 1 conditional)
   core-behavior.md
   telegram-protocol.md
   default-silence.md
@@ -53,10 +55,12 @@ tests/
 
 .github/
   workflows/
-    test.yml                # CI: ruff lint + pytest on every PR and push to main
-    publish-tile.yml        # Publish tile to tessl registry on push to main
-    review-openai.yml/.md   # AI-assisted PR review (OpenAI)
-    review-anthropic.yml/.md# AI-assisted PR review (Anthropic)
+    test.yml                # CI: ruff + pyright + pytest on every PR; callable
+                            # (workflow_call) as the publish workflow's gate job
+    publish-tile.yml        # On push to main: test-suite gate, skill review,
+                            # tile lint, CHANGELOG stamp, publish to tessl registry
+    review-openai.md        # AI-assisted PR review (OpenAI; compiled .lock.yml)
+    review-anthropic.md     # AI-assisted PR review (Anthropic; compiled .lock.yml)
 ```
 
 ---
@@ -76,13 +80,19 @@ python -m ruff check tests/
 python -m ruff format --check tests/
 ```
 
+**Type check** (zero-findings gate; `--warnings` fails on warnings too; module resolution via `pyrightconfig.json`):
+
+```bash
+python -m pyright --warnings skills/ tests/
+```
+
 **Run tests:**
 
 ```bash
 python -m pytest
 ```
 
-CI runs these in order: ruff check → ruff format → pytest. All three must pass on every PR.
+CI runs these in order: ruff check → ruff format → pyright → pytest. All four must pass on every PR.
 
 **There is no build step.** This is a pure Python + Markdown tile; nothing needs compiling.
 
@@ -92,12 +102,13 @@ CI runs these in order: ruff check → ruff format → pytest. All three must pa
 
 ### Rule files (`rules/*.md`)
 
-- Every rule file **must** have YAML frontmatter with `alwaysApply: true` as the first thing in the file:
+- Every rule file **must** open with YAML frontmatter declaring its scope. Always-on rules (the default here — 11 of 12) use:
   ```markdown
   ---
   alwaysApply: true
   ---
   ```
+- Conditional rules use `alwaysApply: false` plus an `applyTo:` glob+prose scope (see `rules/progress-updates.md` for the live example). Both forms are valid tessl frontmatter; pick by whether the rule's prescription fires on every turn or only in a specific context.
 - One concern per rule file — keep rules focused so consumers can override surgically.
 - Rule filenames are kebab-case (e.g., `core-behavior.md`).
 
@@ -132,11 +143,11 @@ CI runs these in order: ruff check → ruff format → pytest. All three must pa
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `test.yml` | PR + push to `main` | Lint (`ruff`) + `pytest` |
-| `publish-tile.yml` | push to `main`, `workflow_dispatch` | tessl skill review (quality gate ≥85) + tile publish |
+| `test.yml` | PR + `workflow_call` | Lint (`ruff`) + type check (`pyright`) + `pytest` |
+| `publish-tile.yml` | push to `main`, `workflow_dispatch` | gate (calls `test.yml`) → tessl skill review (quality gate ≥85) → tile lint → CHANGELOG stamp → publish |
 | `review-openai.md` / `review-anthropic.md` | PR events | AI-assisted code review |
 
-The publish workflow runs `tessl skill review --threshold 85` on each skill before publishing. A failing quality score blocks the publish.
+The publish workflow first runs the full test suite as a read-only `gate` job (calling `test.yml` via `workflow_call` — main-push coverage comes from this call, not a separate `push:` trigger on `test.yml`), then `tessl skill review --threshold 85` on each changed skill. A red suite or failing quality score blocks the publish.
 
 ---
 
@@ -144,8 +155,8 @@ The publish workflow runs `tessl skill review --threshold 85` on each skill befo
 
 1. **`tile.json` + `README.md` drift** — if you add/remove a rule or skill in one place, update both. The table and the JSON registry must match.
 2. **Ruff scope** — ruff is intentionally limited to `tests/`. Do not widen it to `skills/*/scripts/` without an explicit decision in the PR.
-3. **Frontmatter required** — rule files without `alwaysApply: true` frontmatter will not be applied by the tessl runtime. Always include it.
+3. **Frontmatter required** — rule files without scope frontmatter will not be applied by the tessl runtime. Always include either `alwaysApply: true` or `alwaysApply: false` + `applyTo:` (conditional).
 4. **Kebab script loading** — if you add a new skill script and need to test it, add a fixture to `conftest.py` following the `_load()` pattern. Do not try to import the script directly.
 5. **Uniform JSON payload shape** — any new skill script that outputs JSON must guarantee all documented keys are present on every code path, including error paths.
-6. **Version bump** — increment `tile.json` version for any change intended to be published. The publish workflow does not auto-bump it.
-7. **CHANGELOG.md** — document unreleased changes under `## Unreleased` before they land in a release section.
+6. **Version bump** — the publish workflow auto-bumps the patch version via `tesslio/patch-version-publish` on every merge to `main`. Only edit `tile.json`'s version by hand for a minor or major bump.
+7. **CHANGELOG.md** — no `## Unreleased` heading. Add un-headed `### ` entry blocks at the top; the publish workflow's stamp step writes the `## <version> — <date>` heading at publish time. Every merge publishes a version, so every PR should carry an entry block.

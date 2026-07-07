@@ -37,7 +37,7 @@ tessl install jbaruch/nanoclaw-core
 
 ## Philosophy
 
-- **Always on.** Every rule is `alwaysApply: true`. The agent follows these conventions without being prompted.
+- **Always on by default.** 11 of the 12 rules are `alwaysApply: true` — the agent follows them without being prompted. `progress-updates` is conditional (`alwaysApply: false` + `applyTo:`), firing only when long-running background work is in play.
 - **One concern per rule.** Each file covers one topic so projects can override surgically without throwing out the whole tile.
 - **Behavior, not domain.** These are conversational and verification baselines — anything domain-specific (CFPs, calendar, email) lives in `nanoclaw-admin`.
 - **Hint, not authority for state.** Cached state is a recall hint; verify against the live source before acting on it (see `ground-truth`).

@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.118 — 2026-07-07
+
 ### Docs — refresh contributor/agent docs for conditional rules, pyright, and publish behavior (`jbaruch/nanoclaw-core#76`, `jbaruch/nanoclaw-core#69`, `jbaruch/nanoclaw-core#71`)
 
 `.github/copilot-instructions.md` and the README philosophy section predated three repo changes and actively contradicted them: `progress-updates` is conditional (`alwaysApply: false` + `applyTo:`) while both docs demanded `alwaysApply: true` on every rule; the pyright CI gate (0.1.111) was absent from the lint/test instructions and CI table; and the publish flow docs still instructed manual version bumps and a `## Unreleased` heading, fighting the stamp-and-publish pipeline (0.1.113). All three are corrected. `rules/context-recovery.md` now shows the installed-container mount path as the runnable helper command instead of the repo-relative path that fails inside consumer containers (#69). Backfilled release headings for 0.1.113–0.1.115 below (#71) — reconstructed from the merge commits, including the release that added the stamp step and then shipped unstamped.

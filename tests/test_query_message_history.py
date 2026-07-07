@@ -416,6 +416,30 @@ def test_offset_paging_is_deterministic_on_equal_timestamps(
     )
 
 
+def test_error_path_payload_is_capped_too(query_message_history, monkeypatch):
+    # A pathological multi-KB --keyword echoes into the payload on the
+    # missing-NANOCLAW_CHAT_JID error path, which has zero rows to drop —
+    # the envelope clip (ENVELOPE_FIELD_CHARS) must keep the output
+    # within budget anyway.
+    module = query_message_history
+    giant_keyword = "k" * (3 * module.MAX_OUTPUT_BYTES)
+    rc, payload, _stderr = _run(
+        module,
+        ["--keyword", giant_keyword],
+        monkeypatch,
+        chat_jid=None,
+    )
+    assert rc == 1
+    payload = _require_payload(payload)
+    raw = json.dumps(payload)
+    assert len(raw.encode("utf-8")) <= module.MAX_OUTPUT_BYTES, (
+        f"Error-path payload is {len(raw.encode('utf-8'))} bytes — exceeds "
+        f"MAX_OUTPUT_BYTES ({module.MAX_OUTPUT_BYTES}). Error paths must "
+        f"honor the tool-result budget too."
+    )
+    assert len(payload["query"]["keyword"]) == module.ENVELOPE_FIELD_CHARS
+
+
 def test_oversized_content_is_clipped_per_row(query_message_history, monkeypatch, tmp_path):
     db_path = str(tmp_path / "db.sqlite")
     conn = sqlite3.connect(db_path)

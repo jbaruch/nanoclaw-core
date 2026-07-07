@@ -35,14 +35,16 @@ Output (stdout, single-line JSON):
       "error": str|null
     }
 
-    The serialized payload is capped at MAX_OUTPUT_BYTES so the result
-    honors the 25 KB single-tool-result budget from
-    `rules/query-size-limits.md`. When the cap engages: each row's
-    `content` is first clipped to PER_ROW_CONTENT_CHARS (that row's
-    `content_truncated` flips true), then whole rows are dropped
-    oldest-first (`rows_dropped` counts them, `truncated` flips true).
-    Re-query with narrower filters or `--offset` batches to see what
-    was cut.
+    The serialized payload is capped at MAX_OUTPUT_BYTES on every
+    JSON-emitting path (success and error) so the result honors the
+    25 KB single-tool-result budget from `rules/query-size-limits.md`.
+    When the cap engages: each row's `content` is first clipped to
+    PER_ROW_CONTENT_CHARS (that row's `content_truncated` flips true),
+    then whole rows are dropped oldest-first (`rows_dropped` counts
+    them, `truncated` flips true). Envelope strings (query echoes,
+    error) clip to ENVELOPE_FIELD_CHARS so the zero-row envelope is
+    bounded too. Re-query with narrower filters or `--offset` batches
+    to see what was cut.
 
 Exit codes:
     0 — clean success (rows may be empty).
@@ -74,6 +76,12 @@ MAX_OUTPUT_BYTES = 25 * 1024
 # messages are rarely this long; pasted logs and forwarded walls of text
 # are the case this guards.
 PER_ROW_CONTENT_CHARS = 4000
+# Clip for envelope strings echoed into every payload (query.keyword,
+# query.sender, error). Bounds the zero-row envelope so cap_payload's
+# row-dropping loop can always land under MAX_OUTPUT_BYTES — a
+# pathological multi-KB --keyword would otherwise bust the budget with
+# no rows left to drop.
+ENVELOPE_FIELD_CHARS = 500
 LIKE_ESCAPE_CHAR = "\\"
 
 
@@ -155,14 +163,27 @@ def make_payload(
 ) -> dict:
     """Single canonical output shape — every key present on success and
     error paths so the agent (or a downstream consumer) doesn't have to
-    special-case error JSON."""
+    special-case error JSON. Envelope strings clip to
+    ENVELOPE_FIELD_CHARS so the zero-row envelope stays bounded on
+    every path (see cap_payload)."""
+
+    def clip(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value[:ENVELOPE_FIELD_CHARS]
+
     return {
         "rows": rows,
         "chat_jid": chat_jid,
-        "query": {"keyword": keyword, "sender": sender, "limit": limit, "offset": offset},
+        "query": {
+            "keyword": clip(keyword),
+            "sender": clip(sender),
+            "limit": limit,
+            "offset": offset,
+        },
         "truncated": False,
         "rows_dropped": 0,
-        "error": error,
+        "error": clip(error),
     }
 
 
@@ -230,7 +251,9 @@ def main(argv: Optional[list] = None) -> int:
         sys.stderr.write(err + "\n")
         print(
             json.dumps(
-                make_payload([], "", args.keyword, args.sender, args.limit, args.offset, err)
+                cap_payload(
+                    make_payload([], "", args.keyword, args.sender, args.limit, args.offset, err)
+                )
             )
         )
         return 1
@@ -270,7 +293,11 @@ def main(argv: Optional[list] = None) -> int:
         sys.stderr.write(err + "\n")
         print(
             json.dumps(
-                make_payload([], chat_jid, args.keyword, args.sender, args.limit, args.offset, err)
+                cap_payload(
+                    make_payload(
+                        [], chat_jid, args.keyword, args.sender, args.limit, args.offset, err
+                    )
+                )
             )
         )
         return 1

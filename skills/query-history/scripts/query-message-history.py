@@ -20,7 +20,8 @@ Env vars:
     NANOCLAW_CHAT_JID — required. Scopes the query to the current chat.
     NANOCLAW_DB       — optional, default `/workspace/store/messages.db`.
 
-Output (stdout, single-line JSON):
+Output (stdout, single-line JSON — emitted on exit 0 and exit 1;
+usage errors at exit 2 print a stderr diagnostic only, no JSON):
     {
       "rows": [
         {"id", "timestamp", "sender_name", "content", "is_from_me",

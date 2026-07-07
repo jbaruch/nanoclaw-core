@@ -36,4 +36,4 @@ The script prints a single-line JSON payload to stdout:
 }
 ```
 
-`relation` is `past` / `future` / `now`; `delta_seconds` is signed (>0 future, <0 past). Read `relation` / `deadline_elapsed` / `still_time_to_act` and act on them directly — do not re-derive past/future from your own read of the clock. Exit 0 on success; exit 2 on a usage error (missing, unparseable, or naive `--deadline`) with the diagnostic on stderr and no JSON. Finish here.
+`relation` is `past` / `future` / `now` and is **authoritative** for past/future classification. `delta_seconds` is signed (>0 future, <0 past) but truncates toward zero — a sub-second past/future delta reads `0` while `relation` still says `past` or `future`; never classify from the sign of `delta_seconds` alone. Read `relation` / `deadline_elapsed` / `still_time_to_act` and act on them directly — do not re-derive past/future from your own read of the clock. Exit 0 on success; exit 2 on a usage error (missing, unparseable, or naive `--deadline`) with the diagnostic on stderr and no JSON. Finish here.

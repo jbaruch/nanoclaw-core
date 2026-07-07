@@ -13,10 +13,10 @@ alwaysApply: true
 Before responding with "Потерял контекст", "I don't remember this thread", "I don't have context on this topic", or any equivalent acknowledgement that prior conversation is unavailable, run the `query-history` skill's search helper:
 
 ```bash
-python3 skills/query-history/scripts/query-message-history.py --keyword "<text>"
+python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --keyword "<text>"
 ```
 
-Filters: `--sender <name>` (matches `sender_name`; see the Schema section below for the `Display (@username)` shape — a username fragment is enough), `--limit N` (default 20, cap 50 per `rules/query-size-limits.md`). Output is single-line JSON on stdout; chat scope from `NANOCLAW_CHAT_JID`. Inside agent containers the script mounts at `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py` per the standard `tessl__<name>` convention.
+Filters: `--sender <name>` (matches `sender_name`; see the Schema section below for the `Display (@username)` shape — a username fragment is enough), `--limit N` (default 20, cap 50 per `rules/query-size-limits.md`). Output is single-line JSON on stdout; chat scope from `NANOCLAW_CHAT_JID`. The command above is the installed-container mount path (standard `tessl__<name>` convention); in a checkout of this repo the same script is `skills/query-history/scripts/query-message-history.py`.
 
 ## Schema (quick reference)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+### Docs — refresh contributor/agent docs for conditional rules, pyright, and publish behavior (`jbaruch/nanoclaw-core#76`, `jbaruch/nanoclaw-core#69`, `jbaruch/nanoclaw-core#71`)
+
+`.github/copilot-instructions.md` and the README philosophy section predated three repo changes and actively contradicted them: `progress-updates` is conditional (`alwaysApply: false` + `applyTo:`) while both docs demanded `alwaysApply: true` on every rule; the pyright CI gate (0.1.111) was absent from the lint/test instructions and CI table; and the publish flow docs still instructed manual version bumps and a `## Unreleased` heading, fighting the stamp-and-publish pipeline (0.1.113). All three are corrected. `rules/context-recovery.md` now shows the installed-container mount path as the runnable helper command instead of the repo-relative path that fails inside consumer containers (#69). Backfilled release headings for 0.1.113–0.1.115 below (#71) — reconstructed from the merge commits, including the release that added the stamp step and then shipped unstamped.
+
 ## 0.1.117 — 2026-07-07
 
 ### Skills — document the sub-second `delta_seconds` contract in now-vs-deadline (`jbaruch/nanoclaw-core#72`)
@@ -15,6 +19,24 @@ The output contract documented `delta_seconds` as signed (>0 future, <0 past), b
 ### CI — gate publishing on ruff, pyright, and pytest (`jbaruch/nanoclaw-core#74`)
 
 The publish workflow triggered on every push to `main` independently of the `Test` workflow, so a broken merge commit could publish before its own tests failed. `test.yml` is now a reusable (`workflow_call`) workflow; the publish workflow runs it as a `gate` job the `publish` job `needs`. One suite definition serves PR checks and the publish gate (review feedback: no drift between duplicated step lists), and per-job least privilege keeps the pip-installed toolchain under a read-only token — only the `publish` job holds `id-token`/`contents: write` and `TESSL_TOKEN`. `test.yml` drops its `push: main` trigger; main-push coverage comes from the gate call.
+
+## 0.1.115 — 2026-07-07
+
+### Changed — ignore tessl consumer-side scaffolding (`jbaruch/nanoclaw-core#67`)
+
+Backfilled entry (shipped without one): adds `.gitignore` coverage for tessl consumer-side scaffolding files so `tessl install` artifacts in a checkout don't show as untracked noise.
+
+## 0.1.114 — 2026-07-03
+
+### Changed — refresh coding-policy PR review workflows
+
+Backfilled entry (shipped without one): upgrade the gh-aw `jbaruch/coding-policy` PR review workflow templates (OpenAI + Anthropic) to the latest published version.
+
+## 0.1.113 — 2026-07-02
+
+### CI — wire coding-policy stamp-changelog step before publish (`jbaruch/nanoclaw-core#66`)
+
+Backfilled entry (shipped without one): adds the `jbaruch/coding-policy` stamp-changelog action immediately before `tesslio/patch-version-publish`. Authors add un-headed `### ` CHANGELOG blocks; the step writes the `## <version> — <date>` heading at publish time.
 
 ## 0.1.112 — 2026-07-02
 

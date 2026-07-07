@@ -77,6 +77,10 @@ MAX_OUTPUT_BYTES = 25_000
 # messages are rarely this long; pasted logs and forwarded walls of text
 # are the case this guards.
 PER_ROW_CONTENT_CHARS = 4000
+# SQLite binds integers as signed 64-bit; a Python int past this raises
+# OverflowError at bind time (not sqlite3.Error), crashing with no JSON.
+# Reject over-range --offset as a usage error instead.
+SQLITE_MAX_INT = 2**63 - 1
 # Clip for envelope strings echoed into every payload (query.keyword,
 # query.sender, error). Bounds the zero-row envelope so cap_payload's
 # row-dropping loop can always land under MAX_OUTPUT_BYTES — a
@@ -249,6 +253,13 @@ def main(argv: Optional[list] = None) -> int:
         sys.stderr.write(
             f"Usage error: --offset={args.offset} is negative; use zero or a "
             f"positive integer.\n"
+        )
+        return 2
+    if args.offset > SQLITE_MAX_INT:
+        # Don't echo the value — it can be arbitrarily many digits.
+        sys.stderr.write(
+            "Usage error: --offset exceeds SQLite's signed 64-bit integer "
+            "range; use a smaller offset.\n"
         )
         return 2
 

@@ -351,6 +351,20 @@ def test_negative_offset_is_usage_error(query_message_history, monkeypatch):
     assert "--offset=-1" in stderr
 
 
+def test_offset_beyond_sqlite_int_range_is_usage_error(query_message_history, monkeypatch):
+    # SQLite binds integers as signed 64-bit; a Python int past that
+    # raises OverflowError at bind time (not sqlite3.Error) — a crash
+    # with no JSON. The script must reject it as a usage error, and
+    # must not echo the arbitrarily long digit string back.
+    module = query_message_history
+    huge = str(module.SQLITE_MAX_INT + 1)
+    rc, payload, stderr = _run(module, ["--keyword", "x", "--offset", huge], monkeypatch)
+    assert rc == 2
+    assert payload is None
+    assert "64-bit" in stderr
+    assert huge not in stderr
+
+
 def test_offset_batches_past_earlier_rows(query_message_history, monkeypatch, tmp_path):
     db_path = str(tmp_path / "db.sqlite")
     _populate_db(db_path)

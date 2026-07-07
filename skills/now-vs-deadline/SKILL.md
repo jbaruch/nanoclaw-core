@@ -7,7 +7,7 @@ description: Deterministically decide whether a deadline/event is past or future
 
 Process steps in order. Do not skip ahead.
 
-Compares a deadline against the actual current instant and returns past/future plus the signed delta. Use it whenever you would otherwise assert that a deadline has elapsed or that there is still time to act — `rules/temporal-awareness.md` requires the comparison to be computed here, not inferred.
+Compares a deadline against the actual current instant and returns past/future plus the delta in integer seconds. Use it whenever you would otherwise assert that a deadline has elapsed or that there is still time to act — `rules/temporal-awareness.md` requires the comparison to be computed here, not inferred.
 
 ## Step 1 — Resolve the deadline to a timezone-aware instant
 
@@ -36,4 +36,12 @@ The script prints a single-line JSON payload to stdout:
 }
 ```
 
-`relation` is `past` / `future` / `now`; `delta_seconds` is signed (>0 future, <0 past). Read `relation` / `deadline_elapsed` / `still_time_to_act` and act on them directly — do not re-derive past/future from your own read of the clock. Exit 0 on success; exit 2 on a usage error (missing, unparseable, or naive `--deadline`) with the diagnostic on stderr and no JSON. Finish here.
+Field contract:
+
+- `relation` is `past` / `future` / `now` — **authoritative** for past/future classification.
+- `delta_seconds` is the delta as integer seconds, truncated toward zero.
+- The sign of `delta_seconds` is meaningful only when non-zero: >0 future, <0 past.
+- A sub-second past/future delta reads `0` in `delta_seconds` while `relation` still says `past` or `future`. Never classify from `delta_seconds` alone.
+- Read `relation` / `deadline_elapsed` / `still_time_to_act` and act on them directly — do not re-derive past/future from your own read of the clock.
+
+Exit 0 on success. Exit 2 on a usage error (missing, unparseable, or naive `--deadline`) with the diagnostic on stderr and no JSON. Finish here.

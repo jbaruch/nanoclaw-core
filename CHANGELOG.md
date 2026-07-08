@@ -1,5 +1,9 @@
 # Changelog
 
+### CI — stop Dependabot from opening lock-file-only action PRs (`jbaruch/nanoclaw-core#75` follow-up)
+
+The SHA-pinning work (#75) woke Dependabot, which then opened PRs bumping actions that live only in the gh-aw-compiled `.github/workflows/*.lock.yml` files (closed #57-#59). Those files carry `merge=ours` in `.gitattributes`, so a bump merges as a no-op and the next reviewer-template recompile reverts it. Added an `ignore` block naming `actions/cache/save`, `actions/cache/restore`, and `github/gh-aw-actions/setup` by exact dependency name; hand-authored `actions/checkout` and `actions/setup-python` stay managed.
+
 ## 0.1.125 — 2026-07-08
 
 ### CI — bump ruff to 0.15.20 (Dependabot, `jbaruch/nanoclaw-core#62`)

@@ -31,6 +31,10 @@ updates:
     # flow instead. `actions/checkout` and `actions/setup-python` are NOT
     # ignored — those are hand-authored in test.yml/publish-tile.yml and
     # stay Dependabot-managed (see #60, #61).
+    # Exact dependency names (not a wildcard) — Dependabot's github-actions
+    # ecosystem names each sub-action by its full path, and wildcard
+    # matching on nested paths is unreliable.
     ignore:
-      - dependency-name: actions/cache*
+      - dependency-name: actions/cache/save
+      - dependency-name: actions/cache/restore
       - dependency-name: github/gh-aw-actions/setup

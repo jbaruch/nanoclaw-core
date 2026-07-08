@@ -22,3 +22,15 @@ updates:
       prefix: chore(ci)
     labels:
       - dependencies
+    # Actions that appear ONLY inside the gh-aw-compiled
+    # `.github/workflows/*.lock.yml` files are owned by the `gh aw compile`
+    # step, not hand-authored here. Their `.gitattributes` `merge=ours`
+    # marking makes a Dependabot bump a no-op release, and the next
+    # reviewer-template upgrade recompile reverts it anyway (see closed
+    # PRs #57-#59). They refresh via the `tessl__install-reviewer` upgrade
+    # flow instead. `actions/checkout` and `actions/setup-python` are NOT
+    # ignored — those are hand-authored in test.yml/publish-tile.yml and
+    # stay Dependabot-managed (see #60, #61).
+    ignore:
+      - dependency-name: actions/cache*
+      - dependency-name: github/gh-aw-actions/setup

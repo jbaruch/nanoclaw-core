@@ -110,7 +110,7 @@ CI runs these in order: ruff check → ruff format → pyright → pytest. All f
 ### Skill files (`skills/*/SKILL.md`)
 
 - SKILL.md files have YAML frontmatter with `name:` and `description:` fields (no `alwaysApply`).
-- Scripts live in `skills/<skill-name>/scripts/` and use kebab-case filenames (e.g., `container-uptime.py`).
+- Scripts live in `skills/<skill-name>/scripts/` and use kebab-case filenames (e.g., `query-message-history.py`).
 - Skill scripts are plain Python; they are deployed into agent containers at a known path: `/home/node/.claude/skills/tessl__<skill-name>/scripts/<script>.py`.
 
 ### `tile.json` and `README.md` must stay in sync

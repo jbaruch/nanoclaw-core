@@ -1,5 +1,9 @@
 # Changelog
 
+### CI — bump pytest to 9.1.1 (Dependabot, `jbaruch/nanoclaw-core#63`)
+
+Dev-toolchain pin refresh via the weekly Dependabot `pip` config: `pytest` 8.3.4 → 9.1.1 (major) in `requirements-dev.txt`. Full suite passes on 9.1.1, including with warnings-as-errors — no reliance on pytest-8 removals.
+
 ## 0.1.123 — 2026-07-08
 
 ### CI — bump pyright to 1.1.411 (Dependabot, `jbaruch/nanoclaw-core#64`)

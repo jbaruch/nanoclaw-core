@@ -14,21 +14,38 @@ Usage:
     python3 .../query-message-history.py --keyword "release plan"
     python3 .../query-message-history.py --sender ligolnik
     python3 .../query-message-history.py --keyword "JCON" --sender ligolnik --limit 50
+    python3 .../query-message-history.py --keyword "JCON" --limit 50 --offset 50
 
 Env vars:
     NANOCLAW_CHAT_JID — required. Scopes the query to the current chat.
     NANOCLAW_DB       — optional, default `/workspace/store/messages.db`.
 
-Output (stdout, single-line JSON):
+Output (stdout, single-line JSON — emitted on exit 0 and exit 1;
+usage errors at exit 2 print a stderr diagnostic only, no JSON):
     {
       "rows": [
-        {"id", "timestamp", "sender_name", "content", "is_from_me"},
+        {"id", "timestamp", "sender_name", "content", "is_from_me",
+         "content_truncated"},
         ...
       ],
       "chat_jid": str,
-      "query": {"keyword": str|null, "sender": str|null, "limit": int},
+      "query": {"keyword": str|null, "sender": str|null, "limit": int,
+                "offset": int},
+      "truncated": bool,
+      "rows_dropped": int,
       "error": str|null
     }
+
+    The serialized payload is capped at MAX_OUTPUT_BYTES on every
+    JSON-emitting path (success and error) so the result honors the
+    25 KB single-tool-result budget from `rules/query-size-limits.md`.
+    When the cap engages: each row's `content` is first clipped to
+    PER_ROW_CONTENT_CHARS (that row's `content_truncated` flips true),
+    then whole rows are dropped oldest-first (`rows_dropped` counts
+    them, `truncated` flips true). Envelope strings (query echoes,
+    error) clip to ENVELOPE_FIELD_CHARS so the zero-row envelope is
+    bounded too. Re-query with narrower filters or `--offset` batches
+    to see what was cut.
 
 Exit codes:
     0 — clean success (rows may be empty).
@@ -36,7 +53,8 @@ Exit codes:
         sqlite error). Diagnostic on stderr, empty-rows JSON on stdout.
     2 — usage error: no --keyword AND no --sender, or --limit non-
         positive, or --limit above the 50-row messages.db cap from
-        `rules/query-size-limits.md`.
+        `rules/query-size-limits.md`, or --offset negative or beyond
+        SQLite's signed 64-bit integer range.
 """
 
 import argparse
@@ -51,6 +69,26 @@ DEFAULT_LIMIT = 20
 # Hard cap mirrors `rules/query-size-limits.md` (max 50 rows for messages.db).
 # Anything above this defeats the context-budget guard the rule set enforces.
 MAX_LIMIT = 50
+# Serialized-output budget mirrors the 25 KB single-tool-result limit in
+# `rules/query-size-limits.md`. 25 KB = 25,000 bytes (the rule says KB,
+# not KiB). The row cap alone doesn't enforce it — a handful of long
+# messages can blow the budget at 50 rows.
+MAX_OUTPUT_BYTES = 25_000
+# Per-row content clip applied before whole rows are dropped: favors
+# breadth (more rows, each capped) over depth (few complete rows). Chat
+# messages are rarely this long; pasted logs and forwarded walls of text
+# are the case this guards.
+PER_ROW_CONTENT_CHARS = 4000
+# SQLite binds integers as signed 64-bit; a Python int past this raises
+# OverflowError at bind time (not sqlite3.Error), crashing with no JSON.
+# Reject over-range --offset as a usage error instead.
+SQLITE_MAX_INT = 2**63 - 1
+# Clip for envelope strings echoed into every payload (query.keyword,
+# query.sender, error). Bounds the zero-row envelope so cap_payload's
+# row-dropping loop can always land under MAX_OUTPUT_BYTES — a
+# pathological multi-KB --keyword would otherwise bust the budget with
+# no rows left to drop.
+ENVELOPE_FIELD_CHARS = 500
 LIKE_ESCAPE_CHAR = "\\"
 
 
@@ -89,8 +127,8 @@ def build_query(has_keyword: bool, has_sender: bool) -> str:
         SELECT id, timestamp, sender_name, content, is_from_me
         FROM messages
         WHERE {' AND '.join(where)}
-        ORDER BY timestamp DESC
-        LIMIT ?
+        ORDER BY timestamp DESC, id DESC
+        LIMIT ? OFFSET ?
     """
 
 
@@ -110,6 +148,14 @@ def parse_args(argv: list) -> argparse.Namespace:
         default=DEFAULT_LIMIT,
         help=f"Max rows to return (default {DEFAULT_LIMIT}).",
     )
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Rows to skip before returning results (default 0). Batch "
+        "through result sets larger than the row cap with successive "
+        "--offset values per rules/query-size-limits.md.",
+    )
     return parser.parse_args(argv)
 
 
@@ -119,17 +165,70 @@ def make_payload(
     keyword: Optional[str],
     sender: Optional[str],
     limit: int,
+    offset: int,
     error: Optional[str],
 ) -> dict:
     """Single canonical output shape — every key present on success and
     error paths so the agent (or a downstream consumer) doesn't have to
-    special-case error JSON."""
+    special-case error JSON. Envelope strings clip to
+    ENVELOPE_FIELD_CHARS so the zero-row envelope stays bounded on
+    every path (see cap_payload); a clipped envelope field flips
+    `truncated` just like row-level cuts do."""
+    clipped = False
+
+    def clip(value: Optional[str]) -> Optional[str]:
+        nonlocal clipped
+        if value is None:
+            return None
+        if len(value) > ENVELOPE_FIELD_CHARS:
+            clipped = True
+            return value[:ENVELOPE_FIELD_CHARS]
+        return value
+
     return {
         "rows": rows,
-        "chat_jid": chat_jid,
-        "query": {"keyword": keyword, "sender": sender, "limit": limit},
-        "error": error,
+        "chat_jid": clip(chat_jid),
+        "query": {
+            "keyword": clip(keyword),
+            "sender": clip(sender),
+            "limit": limit,
+            "offset": offset,
+        },
+        "truncated": clipped,
+        "rows_dropped": 0,
+        "error": clip(error),
     }
+
+
+def cap_payload(payload: dict, max_bytes: int = MAX_OUTPUT_BYTES) -> dict:
+    """Enforce the serialized-output budget in place.
+
+    Phase 1 clips each row's `content` to PER_ROW_CONTENT_CHARS (marking
+    that row's `content_truncated`). Phase 2 drops whole rows oldest-first
+    (rows are ordered newest-first, so pops come off the tail) until the
+    single-line JSON fits `max_bytes`, counting them in `rows_dropped`.
+    Either phase engaging flips the top-level `truncated` flag. A payload
+    already under budget passes through with only Phase-1 marking applied
+    when a row exceeds the per-row clip."""
+
+    def size(p: dict) -> int:
+        # +1 for the trailing newline print() appends — the budget bounds
+        # the full stdout tool result, not just the JSON body.
+        return len(json.dumps(p).encode("utf-8")) + 1
+
+    for row in payload["rows"]:
+        content = row.get("content") or ""
+        if len(content) > PER_ROW_CONTENT_CHARS:
+            row["content"] = content[:PER_ROW_CONTENT_CHARS]
+            row["content_truncated"] = True
+            payload["truncated"] = True
+
+    while payload["rows"] and size(payload) > max_bytes:
+        payload["rows"].pop()
+        payload["rows_dropped"] += 1
+        payload["truncated"] = True
+
+    return payload
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -148,7 +247,21 @@ def main(argv: Optional[list] = None) -> int:
         sys.stderr.write(
             f"Usage error: --limit={args.limit} exceeds the messages.db cap of "
             f"{MAX_LIMIT} rows (rules/query-size-limits.md). "
-            f"Re-run with a smaller limit or use OFFSET-based batching.\n"
+            f"Re-run with a smaller limit; batch through larger result sets "
+            f"with successive --offset values.\n"
+        )
+        return 2
+    if args.offset < 0:
+        sys.stderr.write(
+            f"Usage error: --offset={args.offset} is negative; use zero or a "
+            f"positive integer.\n"
+        )
+        return 2
+    if args.offset > SQLITE_MAX_INT:
+        # Don't echo the value — it can be arbitrarily many digits.
+        sys.stderr.write(
+            "Usage error: --offset exceeds SQLite's signed 64-bit integer "
+            "range; use a smaller offset.\n"
         )
         return 2
 
@@ -156,7 +269,13 @@ def main(argv: Optional[list] = None) -> int:
     if not chat_jid:
         err = "NANOCLAW_CHAT_JID not set — required env var for chat scope."
         sys.stderr.write(err + "\n")
-        print(json.dumps(make_payload([], "", args.keyword, args.sender, args.limit, err)))
+        print(
+            json.dumps(
+                cap_payload(
+                    make_payload([], "", args.keyword, args.sender, args.limit, args.offset, err)
+                )
+            )
+        )
         return 1
 
     db_path = os.environ.get("NANOCLAW_DB", DEFAULT_DB)
@@ -167,6 +286,7 @@ def main(argv: Optional[list] = None) -> int:
     if args.sender:
         params.append(escape_like(args.sender))
     params.append(args.limit)
+    params.append(args.offset)
 
     # Open the DB read-only via URI — `sqlite3.connect(path)` would otherwise
     # create an empty file at a missing/mistyped NANOCLAW_DB and silently
@@ -184,19 +304,31 @@ def main(argv: Optional[list] = None) -> int:
                 "sender_name": r[2],
                 "content": r[3],
                 "is_from_me": bool(r[4]),
+                "content_truncated": False,
             }
             for r in cursor.fetchall()
         ]
     except sqlite3.Error as e:
         err = f"DB access failed: {e}"
         sys.stderr.write(err + "\n")
-        print(json.dumps(make_payload([], chat_jid, args.keyword, args.sender, args.limit, err)))
+        print(
+            json.dumps(
+                cap_payload(
+                    make_payload(
+                        [], chat_jid, args.keyword, args.sender, args.limit, args.offset, err
+                    )
+                )
+            )
+        )
         return 1
     finally:
         if conn is not None:
             conn.close()
 
-    print(json.dumps(make_payload(rows, chat_jid, args.keyword, args.sender, args.limit, None)))
+    payload = cap_payload(
+        make_payload(rows, chat_jid, args.keyword, args.sender, args.limit, args.offset, None)
+    )
+    print(json.dumps(payload))
     return 0
 
 

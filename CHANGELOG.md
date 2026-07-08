@@ -1,5 +1,9 @@
 # Changelog
 
+### Skills — query-history output cap + `--offset` batching (`jbaruch/nanoclaw-core#70`, `jbaruch/nanoclaw-core#73`)
+
+`query-message-history.py` capped rows at 50 but returned full `content` per row, so a few pasted-log messages could blow the 25 KB single-tool-result budget from `rules/query-size-limits.md` — the helper violating the rule it exists to support. The serialized payload is now capped at `MAX_OUTPUT_BYTES`: over-long row content clips to `PER_ROW_CONTENT_CHARS` first (per-row `content_truncated`), then whole rows drop oldest-first (`rows_dropped`, top-level `truncated`). The over-limit error message also pointed at "OFFSET-based batching" the CLI didn't expose (#73); `--offset` now exists (negative rejected at exit 2), wired as `LIMIT ? OFFSET ?`, echoed in the `query` block. SKILL.md documents the new payload shape and the narrow-or-batch response to a truncated result. Tests cover offset paging, per-row clip, budget-cap row drops, and negative-offset rejection.
+
 ## 0.1.118 — 2026-07-07
 
 ### Docs — refresh contributor/agent docs for conditional rules, pyright, and publish behavior (`jbaruch/nanoclaw-core#76`, `jbaruch/nanoclaw-core#69`, `jbaruch/nanoclaw-core#71`)

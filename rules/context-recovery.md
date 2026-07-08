@@ -16,7 +16,7 @@ Before responding with "Потерял контекст", "I don't remember this
 python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --keyword "<text>"
 ```
 
-Filters: `--sender <name>` (matches `sender_name`; see the Schema section below for the `Display (@username)` shape — a username fragment is enough), `--limit N` (default 20, cap 50 per `rules/query-size-limits.md`), `--offset N` (batch through larger result sets). Output is single-line JSON on stdout, capped to the `rules/query-size-limits.md` tool-result budget — `truncated` / `content_truncated` / `rows_dropped` report cuts; narrow the filters or batch with `--offset` on a truncated result. Chat scope from `NANOCLAW_CHAT_JID`. The command above is the installed-container mount path (standard `tessl__<name>` convention); in a checkout of this repo the same script is `skills/query-history/scripts/query-message-history.py`.
+Filters: `--sender <name>` (matches `sender_name`; see the Schema section below for the `Display (@username)` shape — a username fragment is enough), `--limit N` (default 20, cap 50 per `rules/query-size-limits.md`), `--offset N` (batch through larger result sets). Output is single-line JSON on stdout (exit 0 and exit 1; usage errors at exit 2 print a stderr diagnostic only — do not parse stdout), capped to the `rules/query-size-limits.md` tool-result budget — `truncated` / `content_truncated` / `rows_dropped` report cuts; narrow the filters or batch with `--offset` on a truncated result. Chat scope from `NANOCLAW_CHAT_JID`. The command above is the installed-container mount path (standard `tessl__<name>` convention); in a checkout of this repo the same script is `skills/query-history/scripts/query-message-history.py`.
 
 ## Schema (quick reference)
 

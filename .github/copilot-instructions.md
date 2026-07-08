@@ -34,12 +34,8 @@ rules/                       # 12 behavioral rule files (11 always-on, 1 conditi
   progress-updates.md
 
 skills/
-  status/
-    SKILL.md                 # Skill definition consumed by the tessl runtime
-    scripts/
-      container-uptime.py   # Reads /.dockerenv mtime to compute container uptime
   query-history/
-    SKILL.md
+    SKILL.md                 # Skill definition consumed by the tessl runtime
     scripts/
       query-message-history.py  # Keyword/sender search over messages.db
   now-vs-deadline/
@@ -49,7 +45,6 @@ skills/
 
 tests/
   conftest.py               # Shared fixtures; loads kebab-case scripts via importlib
-  test_container_uptime.py
   test_query_message_history.py
   test_now_vs_deadline.py
 
@@ -115,7 +110,7 @@ CI runs these in order: ruff check → ruff format → pyright → pytest. All f
 ### Skill files (`skills/*/SKILL.md`)
 
 - SKILL.md files have YAML frontmatter with `name:` and `description:` fields (no `alwaysApply`).
-- Scripts live in `skills/<skill-name>/scripts/` and use kebab-case filenames (e.g., `container-uptime.py`).
+- Scripts live in `skills/<skill-name>/scripts/` and use kebab-case filenames (e.g., `query-message-history.py`).
 - Skill scripts are plain Python; they are deployed into agent containers at a known path: `/home/node/.claude/skills/tessl__<skill-name>/scripts/<script>.py`.
 
 ### `tile.json` and `README.md` must stay in sync
@@ -127,9 +122,9 @@ CI runs these in order: ruff check → ruff format → pyright → pytest. All f
 ### Tests
 
 - Test files live in `tests/` and are standard pytest.
-- **Kebab-case script files cannot be imported normally** (`import container-uptime` is a syntax error). All test fixtures load them via `importlib.util.spec_from_file_location`. The `conftest.py` `_load()` helper handles this — use the existing `container_uptime` fixture as the template rather than reimplementing the loading pattern.
+- **Kebab-case script files cannot be imported normally** (`import query-message-history` is a syntax error). All test fixtures load them via `importlib.util.spec_from_file_location`. The `conftest.py` `_load()` helper handles this — use the existing `query_message_history` fixture as the template rather than reimplementing the loading pattern.
 - Each fixture returns a **fresh module instance per test** — this prevents module-level constants from leaking across tests that monkeypatch them.
-- Tests must be deterministic: no random test data, no reliance on current wall-clock time. Pin time inputs explicitly (see `test_container_uptime.py` for the pattern).
+- Tests must be deterministic: no random test data, no reliance on current wall-clock time. Pin time inputs explicitly (see `test_now_vs_deadline.py` for the pattern).
 - Ruff lint is scoped to `tests/` in `pyproject.toml`; do **not** apply ruff rules to files under `skills/*/scripts/` unless that is the explicit scope of a PR.
 
 ### Python script conventions

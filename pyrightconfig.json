@@ -2,7 +2,6 @@
   "executionEnvironments": [
     { "root": "skills/now-vs-deadline", "extraPaths": ["skills/now-vs-deadline"] },
     { "root": "skills/query-history", "extraPaths": ["skills/query-history"] },
-    { "root": "skills/status", "extraPaths": ["skills/status"] },
-    { "root": "tests", "extraPaths": ["skills/now-vs-deadline", "skills/query-history", "skills/status"] }
+    { "root": "tests", "extraPaths": ["skills/now-vs-deadline", "skills/query-history"] }
   ]
 }

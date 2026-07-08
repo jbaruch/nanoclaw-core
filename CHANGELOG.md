@@ -1,5 +1,9 @@
 # Changelog
 
+### CI — bump ruff to 0.15.20 (Dependabot, `jbaruch/nanoclaw-core#62`)
+
+Dev-toolchain pin refresh via the weekly Dependabot `pip` config: `ruff` 0.7.4 → 0.15.20 in `requirements-dev.txt`. `ruff check` and `ruff format --check` both pass clean on `tests/` at the new version — no formatting drift to reconcile.
+
 ## 0.1.124 — 2026-07-08
 
 ### CI — bump pytest to 9.1.1 (Dependabot, `jbaruch/nanoclaw-core#63`)

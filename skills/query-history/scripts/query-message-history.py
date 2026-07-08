@@ -53,7 +53,8 @@ Exit codes:
         sqlite error). Diagnostic on stderr, empty-rows JSON on stdout.
     2 — usage error: no --keyword AND no --sender, or --limit non-
         positive, or --limit above the 50-row messages.db cap from
-        `rules/query-size-limits.md`, or --offset negative.
+        `rules/query-size-limits.md`, or --offset negative or beyond
+        SQLite's signed 64-bit integer range.
 """
 
 import argparse

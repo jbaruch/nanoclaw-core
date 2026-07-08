@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.121 — 2026-07-08
+
 ### CI — bump actions/checkout to v7.0.0 (Dependabot, `jbaruch/nanoclaw-core#61`)
 
 SHA-pin refresh via the weekly Dependabot `github-actions` config (renewal mechanism from #75): `actions/checkout` 4.3.1 → 7.0.0 in `test.yml` and `publish-tile.yml`. Clears the Node 20 deprecation warning on runners.

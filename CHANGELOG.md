@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.123 — 2026-07-08
+
 ### CI — bump pyright to 1.1.411 (Dependabot, `jbaruch/nanoclaw-core#64`)
 
 Dev-toolchain pin refresh via the weekly Dependabot `pip` config (renewal mechanism from #53): `pyright` 1.1.408 → 1.1.411 in `requirements-dev.txt`. Zero new diagnostics on `skills/` + `tests/`.

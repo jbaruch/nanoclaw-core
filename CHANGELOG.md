@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.122 — 2026-07-08
+
 ### CI — bump actions/setup-python to v6.3.0 (Dependabot, `jbaruch/nanoclaw-core#60`)
 
 SHA-pin refresh via the weekly Dependabot `github-actions` config: `actions/setup-python` 5 → 6.3.0 in `test.yml`. Clears the Node 20 deprecation warning on the setup-python step.

@@ -1,0 +1,33 @@
+name: Review & Publish Tile
+
+# Thin caller for the canonical fleet publish pipeline
+# (jbaruch/coding-policy#206). The test.yml gate stays a local `needs` job so
+# publish still waits on the same suite the PRs run. Display name preserved.
+
+# Least privilege per job: nothing at workflow level.
+permissions: {}
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    needs: gate
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    uses: jbaruch/coding-policy/.github/workflows/publish-plugin.yml@b7eb9d08b78f72810891aa5fe7bf3e4fa6eb55f6
+    secrets:
+      TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
+    with:
+      stamp-changelog: true
+      skill-review-credit-outage: skip

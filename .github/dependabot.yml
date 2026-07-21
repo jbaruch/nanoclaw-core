@@ -29,7 +29,7 @@ updates:
     # reviewer-template upgrade recompile reverts it anyway (see closed
     # PRs #57-#59). They refresh via the `tessl__install-reviewer` upgrade
     # flow instead. `actions/checkout` and `actions/setup-python` are NOT
-    # ignored — those are hand-authored in test.yml/publish-tile.yml and
+    # ignored — those are hand-authored in test.yml/publish.yml and
     # stay Dependabot-managed (see #60, #61).
     # Exact dependency names (not a wildcard) — Dependabot's github-actions
     # ecosystem names each sub-action by its full path, and wildcard

@@ -1,5 +1,11 @@
 # Changelog
 
+### Chore — commit `tessl.json` as the dependency manifest it is
+
+`.gitignore` excluded `tessl.json`, so the repo carried no committed declaration of what it depends on, and `hooks/check-tessl-latest.sh` in `jbaruch/coding-policy` — the deterministic enforcement for the Runtime-Managed Manifest Carve-Out — took its "no manifest, not a consumer" silent no-op path every session. With nothing watching, the untracked local manifest drifted to `"mode": "vendored"` with literal version pins.
+
+The manifest is now committed and `"mode": "managed"`. Every `jbaruch/*` dependency floats at `latest` under the carve-out; `finsi/codex-review` is third-party and stays pinned, with its renewal cadence recorded in `README.md`. This repo is still a legacy `tile.json` plugin with no publish-exclude manifest, so the committed `tessl.json` ships in the package until the plugin migration lands.
+
 ## 0.1.126 — 2026-07-08
 
 ### CI — stop Dependabot from opening lock-file-only action PRs (`jbaruch/nanoclaw-core#75` follow-up)

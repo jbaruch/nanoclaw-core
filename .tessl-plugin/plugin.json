@@ -1,0 +1,24 @@
+{
+  "name": "jbaruch/nanoclaw-core",
+  "version": "0.1.139",
+  "description": "Core behavioral rules and skills for NanoClaw personal assistant agents. Always-on rules for communication, verification, memory, and formatting.",
+  "private": false,
+  "skills": [
+    "skills/query-history",
+    "skills/now-vs-deadline"
+  ],
+  "rules": [
+    "rules/core-behavior.md",
+    "rules/telegram-protocol.md",
+    "rules/language-matching.md",
+    "rules/default-silence.md",
+    "rules/temporal-awareness.md",
+    "rules/ground-truth.md",
+    "rules/read-full-content.md",
+    "rules/context-recovery.md",
+    "rules/post-compaction-trust.md",
+    "rules/tone-matching.md",
+    "rules/query-size-limits.md",
+    "rules/progress-updates.md"
+  ]
+}

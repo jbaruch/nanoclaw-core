@@ -1,8 +1,8 @@
-name: Review & Publish Tile
+name: Review & Publish Plugin
 
 # Thin caller for the canonical fleet publish pipeline
 # (jbaruch/coding-policy#206). The test.yml gate stays a local `needs` job so
-# publish still waits on the same suite the PRs run. Display name preserved.
+# publish still waits on the same suite the PRs run.
 
 # Least privilege per job: nothing at workflow level.
 permissions: {}

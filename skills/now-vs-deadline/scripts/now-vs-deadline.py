@@ -20,7 +20,7 @@ instant (the offset conversion, e.g. 11:00 EDT -> 15:00 UTC) and
 passes it in. The past/future result is offset-independent, so no
 physical location and no `current_tz` lookup is needed here.
 Interpreting relative phrasings ("today"/"now"/"сейчас"/"here") into a
-local frame stays in the trusted tile.
+local frame stays in the trusted plugin.
 
 Usage:
     python3 .../now-vs-deadline.py --deadline "2026-06-12T15:00:00Z"

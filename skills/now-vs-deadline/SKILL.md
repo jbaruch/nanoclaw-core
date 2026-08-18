@@ -17,7 +17,7 @@ Do the offset conversion first (e.g. `11:00 EDT` -> `2026-06-12T15:00:00Z`, or p
 python3 /home/node/.claude/skills/tessl__now-vs-deadline/scripts/now-vs-deadline.py --deadline "2026-06-12T15:00:00Z"
 ```
 
-The comparison is **location-agnostic** — it compares instants only; the result is independent of the offset you used. No physical location or `current_tz` lookup happens here. Mapping relative phrasings (`today`/`now`/`сейчас`/`here`) into a local frame stays in the trusted tile. Proceed immediately to Step 2.
+The comparison is **location-agnostic** — it compares instants only; the result is independent of the offset you used. No physical location or `current_tz` lookup happens here. Mapping relative phrasings (`today`/`now`/`сейчас`/`here`) into a local frame stays in the trusted plugin. Proceed immediately to Step 2.
 
 ## Step 2 — Use the JSON result; do not override it
 

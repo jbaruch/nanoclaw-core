@@ -1,0 +1,60 @@
+# Excluded from the published plugin per `jbaruch/coding-policy: context-artifacts`
+# ("Use `.tesslignore` to exclude build artifacts and CI files from the published
+# plugin"). The plugin ships: `.tessl-plugin/plugin.json`, `README.md`,
+# `CHANGELOG.md`, `rules/`, and `skills/` — including `skills/<name>/scripts/`,
+# which hold the runtime scripts the skills execute. Never add an unanchored
+# `scripts/` entry here: it matches at any depth and strips those
+# (`jbaruch/nanoclaw-admin#435`).
+
+# CI / build / test infrastructure
+.github/
+tests/
+pyproject.toml
+pyrightconfig.json
+requirements-dev.txt
+
+# Repo-internal decision records — history for maintainers, not agent context
+docs/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Repo hygiene / secrets
+.gitignore
+.gitattributes
+.env
+.env.local
+# `.env.example` documents CI reviewer secrets for this repo's maintainers,
+# not consumer configuration — the README never links it.
+.env.example
+
+# Tessl consumer-side install state. `tessl.json` is committed (it is the
+# dependency manifest, not install state) but has no place in a consumer's
+# checkout. Anchored so a consumer's own `tessl.json` is unaffected.
+.tessl/
+/tessl.json
+.claude/
+.agents/
+.codex/
+.gemini/
+.mcp.json
+AGENTS.md
+CLAUDE.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~

@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _load(name: str, relpath: str):
     """Load a hyphenated-filename Python script as a module.
 
-    Tile scripts use kebab-case filenames (e.g. `query-message-history.py`)
+    Plugin scripts use kebab-case filenames (e.g. `query-message-history.py`)
     that aren't valid Python module identifiers, so they can't be
     imported normally. Each call returns a fresh module instance so
     tests that monkeypatch module-level constants don't leak state

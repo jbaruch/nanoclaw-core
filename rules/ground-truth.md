@@ -4,7 +4,7 @@ alwaysApply: true
 
 # Ground Truth — Verify Before Claiming
 
-Any factual claim must be backed by a live check. **Memory is not a source.** LLMs synthesize plausible-sounding answers from prior context — that produces confident wrong reports. Whether the question is tile inventory, scheduled tasks, file contents, or past actions: the model's memory of what *should* be there is not the same as what *is* there.
+Any factual claim must be backed by a live check. **Memory is not a source.** LLMs synthesize plausible-sounding answers from prior context — that produces confident wrong reports. Whether the question is plugin inventory, scheduled tasks, file contents, or past actions: the model's memory of what *should* be there is not the same as what *is* there.
 
 ## Pre-claim verification
 

@@ -1,5 +1,15 @@
 # Changelog
 
+### Chore — migrate from `tile.json` to `.tessl-plugin/plugin.json` (`jbaruch/nanoclaw-core#97`)
+
+Ran `Skill(skill: "tessl__migrate-to-plugin")`: `tessl plugin migrate` wrote `.tessl-plugin/plugin.json` carrying the current version (0.1.139), and the obsolete `tile.json` is gone. Rule scope survives the move untouched — `plugin.json` has no `alwaysApply` field, and all 12 rule files already carried their own frontmatter (11 always-on, `progress-updates` conditional with `applyTo:`), which is where `jbaruch/coding-policy: rule-frontmatter` says scope belongs. `tessl plugin pack` still synthesizes a legacy `tile.json` into the published archive for older consumers; that one is generated, not committed.
+
+New `.tesslignore` — this repo never had a `.tileignore`, which is what left `tessl.json` shipping inside the package after 0.1.139 committed it. `/tessl.json` is anchored so a consumer's own manifest is unaffected. CI, tests, dev tooling, `docs/`, and consumer-side tessl install state stay out; `rules/`, `skills/` (including `skills/*/scripts/`), `README.md`, and the manifest ship. No unanchored `scripts/` entry — that pattern matches at any depth and would strip the runtime scripts the skills execute (`jbaruch/nanoclaw-admin#435`). Verified with `tessl plugin pack`: `tessl.json` is out, both skill scripts are in.
+
+`tessl plugin lint` reports `.mcp.json` as "referenced by the manifest but excluded by ignore rules" in this checkout. It is not a manifest defect — `.mcp.json` is consumer-side scaffolding `tessl install` writes locally and `.gitignore` excludes, and the same failure reproduces on `nanoclaw-admin` and `nanoclaw-travel`, both long since migrated. The manifest lints clean (`✔ Plugin jbaruch/nanoclaw-core@0.1.139 is valid`) on a tree without that local file.
+
+Terminology reconciliation (skill Step 2): package-sense "tile" → "plugin" in `README.md`, `rules/ground-truth.md`, `skills/now-vs-deadline/SKILL.md` and its script docstring, `pyproject.toml`, and `tests/conftest.py`. The `publish.yml` workflow display name goes from "Review & Publish Tile" to "Review & Publish Plugin" — the only CI edit in this PR, cosmetic, and safe because the publish workflow runs on push to `main` (never a required PR check) and `skills/release/resolve-publish-run.sh` resolves runs by workflow *filename*. Historical `tile.json` references in this CHANGELOG stay as written; they name a file that existed at the time.
+
 ## 0.1.139 — 2026-08-18
 
 ### Chore — commit `tessl.json` as the dependency manifest it is

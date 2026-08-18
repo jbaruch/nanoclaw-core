@@ -42,3 +42,10 @@ tessl install jbaruch/nanoclaw-core
 - **Hint, not authority for state.** Cached state is a recall hint; verify against the live source before acting on it (see `ground-truth`).
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+## Development dependencies
+
+`tessl.json` declares this repo's dev-time plugin dependencies.
+
+- Every `jbaruch/*` dependency floats at `latest` (Runtime-Managed Manifest Carve-Out, `jbaruch/coding-policy: dependency-management`).
+- `finsi/codex-review` is third-party and pins. No dependency scanner covers the tessl ecosystem. Renewal cadence: quarterly — run `tessl outdated` and bump the pin in its own commit.

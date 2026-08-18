@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.140 — 2026-08-18
+
 ### Chore — migrate from `tile.json` to `.tessl-plugin/plugin.json` (`jbaruch/nanoclaw-core#97`)
 
 Ran `Skill(skill: "tessl__migrate-to-plugin")`: `tessl plugin migrate` wrote `.tessl-plugin/plugin.json` carrying the current version (0.1.139), and the obsolete `tile.json` is gone. Rule scope survives the move untouched — `plugin.json` has no `alwaysApply` field, and all 12 rule files already carried their own frontmatter (11 always-on, `progress-updates` conditional with `applyTo:`), which is where `jbaruch/coding-policy: rule-frontmatter` says scope belongs. `tessl plugin pack` still synthesizes a legacy `tile.json` into the published archive for older consumers; that one is generated, not committed.

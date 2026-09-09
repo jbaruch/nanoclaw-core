@@ -1,21 +1,29 @@
 """Tests for current-tz/scripts/read-current-tz.py.
 
-Locks down the surface-helper contract per `coding-policy:
+Locks down the shared-reader contract per `coding-policy:
 testing-standards`:
 
   - resolves `tz_state.current_tz` when the singleton row carries the
-    supported `schema_version` and a valid IANA zone
-  - degrades to `available: false` (never crashes) on every miss:
+    supported `schema_version` and a valid IANA zone, and expresses a
+    pinned instant in it (`local_now`, `local_date`)
+  - degrades to `available: false` at exit 0 on every expected miss:
     no row, empty current_tz, unsupported schema_version, unparseable
-    zone, or an unreadable DB
-  - main() always emits one line of JSON and exits 0; CLI misuse exits 2
+    zone
+  - exits 1 (still emitting the unavailable shape) when the store
+    itself cannot be read
+  - CLI misuse (unknown argument, naive --now) exits 2
   - `home_tz` is never used as a fallback
 
-Fixed test data per the determinism rule — no generated inputs.
+Fixed test data per the determinism rule — every instant is pinned
+through `--now`; no test reads the clock.
 """
 
 import json
 import sqlite3
+
+import pytest
+
+PINNED_NOW = "2026-09-10T05:31:00Z"
 
 
 def _insert(db_path, *, current_tz, home_tz="America/New_York", schema_version):
@@ -28,6 +36,14 @@ def _insert(db_path, *, current_tz, home_tz="America/New_York", schema_version):
         conn.commit()
     finally:
         conn.close()
+
+
+def _run(module, capsys, *argv):
+    code = module.main(list(argv))
+    out = capsys.readouterr()
+    lines = [ln for ln in out.out.split("\n") if ln]
+    assert len(lines) == 1, out.out
+    return code, json.loads(lines[0]), out.err
 
 
 def test_resolves_current_tz_on_supported_row(read_current_tz):
@@ -64,8 +80,8 @@ def test_empty_current_tz_unavailable(read_current_tz):
 
 
 def test_home_tz_is_not_a_fallback(read_current_tz):
-    """A blank current_tz does NOT fall back to home_tz — relative-date
-    phrasing needs where the operator is now."""
+    """A blank current_tz does NOT fall back to home_tz — the answer is
+    where the operator is now."""
     module, db_path = read_current_tz
     _insert(
         db_path,
@@ -86,38 +102,75 @@ def test_invalid_zone_unavailable(read_current_tz):
     assert module.resolve_current_tz() is None
 
 
-def test_unreadable_db_unavailable(read_current_tz, tmp_path, monkeypatch):
-    """No tz_state table (fresh/other DB) degrades to unavailable, not a
-    crash — the surface still fires with explicit-date phrasing."""
+def test_unreadable_store_raises(read_current_tz, tmp_path, monkeypatch):
+    """A store with no tz_state table is an operational failure, not an
+    'unavailable' answer — the function raises so main() can exit 1."""
     module, _ = read_current_tz
     monkeypatch.setattr(module, "DB_PATH", str(tmp_path / "no-tz-table.db"))
-    assert module.resolve_current_tz() is None
+    with pytest.raises(module.StoreUnreadable):
+        module.resolve_current_tz()
 
 
-def test_main_emits_single_line_json_available(read_current_tz, monkeypatch, capsys):
+def test_main_available_carries_local_now_and_date(read_current_tz, capsys):
     module, db_path = read_current_tz
     _insert(
         db_path, current_tz="Europe/Madrid", schema_version=module.SUPPORTED_TZ_STATE_SCHEMA_VERSION
     )
-    monkeypatch.setattr("sys.argv", ["read-current-tz.py"])
-    code = module.main()
+    code, payload, _ = _run(module, capsys, "--now", PINNED_NOW)
     assert code == 0
-    out = capsys.readouterr().out
-    lines = [ln for ln in out.split("\n") if ln]
-    assert len(lines) == 1
-    assert json.loads(lines[0]) == {"available": True, "tz": "Europe/Madrid"}
+    # 05:31Z on Sept 10 is 07:31 CEST the same day.
+    assert payload == {
+        "available": True,
+        "tz": "Europe/Madrid",
+        "local_now": "2026-09-10T07:31:00+02:00",
+        "local_date": "2026-09-10",
+    }
 
 
-def test_main_emits_unavailable_shape(read_current_tz, monkeypatch, capsys):
+def test_main_local_date_crosses_midnight(read_current_tz, capsys):
+    """05:31Z is still Sept 9 in Chicago — the local date is the zone's,
+    not UTC's."""
+    module, db_path = read_current_tz
+    _insert(
+        db_path,
+        current_tz="America/Chicago",
+        schema_version=module.SUPPORTED_TZ_STATE_SCHEMA_VERSION,
+    )
+    code, payload, _ = _run(module, capsys, "--now", PINNED_NOW)
+    assert code == 0
+    assert payload["local_now"] == "2026-09-10T00:31:00-05:00"
+    assert payload["local_date"] == "2026-09-10"
+    code, payload, _ = _run(module, capsys, "--now", "2026-09-10T04:31:00Z")
+    assert payload["local_date"] == "2026-09-09"
+
+
+def test_main_emits_unavailable_shape_at_exit_0(read_current_tz, capsys):
     module, _ = read_current_tz  # no row inserted
-    monkeypatch.setattr("sys.argv", ["read-current-tz.py"])
-    code = module.main()
+    code, payload, err = _run(module, capsys, "--now", PINNED_NOW)
     assert code == 0
-    assert json.loads(capsys.readouterr().out) == {"available": False, "tz": None}
+    assert payload == {"available": False, "tz": None, "local_now": None, "local_date": None}
+    assert "no singleton row" in err
 
 
-def test_main_rejects_extra_args(read_current_tz, monkeypatch, capsys):
+def test_main_exits_1_when_store_unreadable(read_current_tz, tmp_path, monkeypatch, capsys):
+    """Missing file / no table: still the unavailable shape on stdout so a
+    surface can degrade, but exit 1 so a scheduling caller sees the
+    operational failure."""
     module, _ = read_current_tz
-    monkeypatch.setattr("sys.argv", ["read-current-tz.py", "/some/path"])
-    assert module.main() == 2
-    assert "Usage" in capsys.readouterr().err
+    monkeypatch.setattr(module, "DB_PATH", str(tmp_path / "missing.db"))
+    code, payload, err = _run(module, capsys, "--now", PINNED_NOW)
+    assert code == 1
+    assert payload["available"] is False
+    assert "cannot read tz_state" in err
+
+
+def test_main_rejects_naive_now(read_current_tz, capsys):
+    module, _ = read_current_tz
+    assert module.main(["--now", "2026-09-10T05:31:00"]) == 2
+    assert "offset" in capsys.readouterr().err
+
+
+def test_main_rejects_unknown_args(read_current_tz, capsys):
+    module, _ = read_current_tz
+    assert module.main(["/some/path"]) == 2
+    assert "usage" in capsys.readouterr().err.lower()

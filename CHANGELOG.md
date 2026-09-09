@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.143 — 2026-09-09
+
 ### Skill — `current-tz`, the one shared reader of the operator's zone (`jbaruch/nanoclaw#951` follow-up)
 
 `read-current-tz.py` existed twice: `nanoclaw-admin/skills/scheduler-timezone` with a `current_tz` → `home_tz` → `$TZ` → `UTC` guess ladder, and `nanoclaw-travel/skills/flight-assist` with no guessing at all. The two had drifted in contract and docstring, and the admin ladder's `home_tz` tier was the same "assume they went home" heuristic the Sept 7 / Sept 9 morning-brief misfires came from. Core is installed in every tier, so it hosts the single copy; both consumers retarget to `/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py` and delete theirs.

@@ -8,7 +8,7 @@ Before any proactive action — reminder, alert, message, suggestion — ground 
 
 ## The check (before every proactive action)
 
-1. **What time is it?** Know the current UTC time and the owner's local time (from `current_tz` in the `tz_state` singleton: `SELECT current_tz FROM tz_state WHERE id = 1` in `/workspace/store/messages.db`). When traveling, these differ from the server timezone. Don't assume.
+1. **What time is it?** Know the current UTC time and the owner's local time. The owner's zone comes from the `current-tz` skill's script (`skills/current-tz/scripts/read-current-tz.py`), which reads the host-resolved `tz_state.current_tz`; never from the container clock or a hand-written SQL read. When traveling, these differ from the server timezone. Don't assume.
 
 2. **What's happening right now?** Use calendar and travel context. Is the owner in-flight? In a meeting? Asleep? Between events? A thing that made sense to schedule at 7am may not make sense to fire at noon if circumstances changed.
 

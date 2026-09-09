@@ -1,7 +1,30 @@
 {
   "executionEnvironments": [
-    { "root": "skills/now-vs-deadline", "extraPaths": ["skills/now-vs-deadline"] },
-    { "root": "skills/query-history", "extraPaths": ["skills/query-history"] },
-    { "root": "tests", "extraPaths": ["skills/now-vs-deadline", "skills/query-history"] }
+    {
+      "root": "skills/now-vs-deadline",
+      "extraPaths": [
+        "skills/now-vs-deadline"
+      ]
+    },
+    {
+      "root": "skills/query-history",
+      "extraPaths": [
+        "skills/query-history"
+      ]
+    },
+    {
+      "root": "skills/current-tz",
+      "extraPaths": [
+        "skills/current-tz"
+      ]
+    },
+    {
+      "root": "tests",
+      "extraPaths": [
+        "skills/now-vs-deadline",
+        "skills/query-history",
+        "skills/current-tz"
+      ]
+    }
   ]
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+### Skill — `current-tz`, the one shared reader of the operator's zone (`jbaruch/nanoclaw#951` follow-up)
+
+`read-current-tz.py` existed twice: `nanoclaw-admin/skills/scheduler-timezone` with a `current_tz` → `home_tz` → `$TZ` → `UTC` guess ladder, and `nanoclaw-travel/skills/flight-assist` with no guessing at all. The two had drifted in contract and docstring, and the admin ladder's `home_tz` tier was the same "assume they went home" heuristic the Sept 7 / Sept 9 morning-brief misfires came from. Core is installed in every tier, so it hosts the single copy; both consumers retarget to `/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py` and delete theirs.
+
+The contract is the travel copy's: `{"available": true, "tz": "<iana>"}` or `{"available": false, "tz": null}`, exit 0 either way, `home_tz` never a fallback. A caller that must pick a zone when unavailable uses the container `$TZ`, which is the operator's zone at spawn since `jbaruch/nanoclaw#954`. `rules/temporal-awareness.md` now points at the script instead of a hand-written SQL read. Tests ported from the travel copy; `pyrightconfig.json` gains the skill root.
+
 ## 0.1.140 — 2026-08-18
 
 ### Chore — migrate from `tile.json` to `.tessl-plugin/plugin.json` (`jbaruch/nanoclaw-core#97`)

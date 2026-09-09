@@ -33,6 +33,7 @@ tessl install jbaruch/nanoclaw-core
 |-------|-------------|
 | [query-history](skills/query-history/SKILL.md) | Search `messages.db` by keyword and/or sender; companion to `context-recovery` |
 | [now-vs-deadline](skills/now-vs-deadline/SKILL.md) | Deterministically compare a deadline against the current instant; mandated path for `temporal-awareness` |
+| [current-tz](skills/current-tz/SKILL.md) | Read the operator's current IANA zone from `tz_state`, resolved by the host from live location; the single shared reader, no home-zone guessing |
 
 ## Philosophy
 

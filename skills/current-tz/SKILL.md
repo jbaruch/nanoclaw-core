@@ -22,8 +22,12 @@ Exit codes: `0` — the store was read and `available` is the answer. `1` — th
 
 ## Step 2 — Act on the result
 
-- `available: true` → use `local_now` and `local_date` as the operator's wall clock and date; pass `tz` to any script that converts another instant.
-- `available: false` on exit `0` → a phrasing surface falls back to explicit dates (no relative words, no warning marker); a scheduling caller that must pick a zone uses the container `$TZ`. Never read `home_tz` as a stand-in for where the operator is.
-- Exit `1` → a scheduling caller treats it as a hard failure and surfaces the stderr diagnostic; a phrasing surface degrades as for `available: false`.
+- `available: true` → use `local_now` and `local_date` as the operator's wall clock and date.
+- `available: true` → pass `tz` to any script that converts another instant.
+- `available: false` on exit `0`, phrasing surface → fall back to explicit dates, no relative words and no warning marker.
+- `available: false` on exit `0`, scheduling caller that must pick a zone → use the container `$TZ`.
+- Exit `1`, scheduling caller → treat it as a hard failure and surface the stderr diagnostic.
+- Exit `1`, phrasing surface → degrade as for `available: false`.
+- Never read `home_tz` as a stand-in for where the operator is.
 
 Finish here.

@@ -1,5 +1,15 @@
 # Changelog
 
+### Skill — `current-tz` review advisories from `jbaruch/nanoclaw-core#103` (`#104`)
+
+Three findings the #103 review deferred as advisory, folded in together rather than one round each.
+
+`SUPPORTED_TZ_STATE_SCHEMA_VERSION`'s comment described a ceiling ("Highest ... this reader interprets", "a higher version means a shape this reader doesn't understand") while the code has always been strict equality — a *lower* `schema_version` degrades to unavailable too, which is what a non-owner reader owes under `jbaruch/coding-policy: stateful-artifacts`. The comment now states the equality contract.
+
+`test_unreadable_store_raises` and `test_main_exits_1_when_store_unreadable` both claimed to cover "no tz_state table" while pointing `DB_PATH` at a file that does not exist — one operational failure asserted twice under two names. Each is now named for the case it actually drives (`test_missing_store_file_raises`, `test_main_exits_1_when_store_file_missing`), and the table-missing failure gets its own pair against an empty SQLite file that opens as a database and then has no `tz_state` in it. Both exit-1 paths the docstrings promised are now genuinely exercised; the new main-level case asserts the `no such table` diagnostic reaches stderr.
+
+`SKILL.md` Step 2's `available: false` bullet carried three directives — the phrasing fallback, the scheduling fallback, and the `home_tz` prohibition — against `jbaruch/coding-policy: context-writing-style` Structure. Split one directive per bullet. The adjacent `available: true` and exit-`1` bullets had the same defect and split with it.
+
 ## 0.1.143 — 2026-09-09
 
 ### Skill — `current-tz`, the one shared reader of the operator's zone (`jbaruch/nanoclaw#951` follow-up)

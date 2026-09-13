@@ -61,9 +61,10 @@ from datetime import datetime, timezone
 
 DB_PATH = "/workspace/store/messages.db"
 
-# Highest `tz_state.schema_version` this reader interprets. The host
-# orchestrator owns `tz_state` writes; a higher version means a shape
-# this reader doesn't understand, so it degrades to unavailable.
+# The one `tz_state.schema_version` this reader interprets — the check
+# is strict equality, not a ceiling. The host orchestrator owns
+# `tz_state` writes; any other version, higher or lower, is a shape this
+# reader doesn't understand, so it degrades to unavailable.
 SUPPORTED_TZ_STATE_SCHEMA_VERSION = 4
 
 

@@ -10,7 +10,8 @@ testing-standards`:
     no row, empty current_tz, unsupported schema_version, unparseable
     zone
   - exits 1 (still emitting the unavailable shape) when the store
-    itself cannot be read
+    itself cannot be read: the file is missing, or it opens but carries
+    no `tz_state` table
   - CLI misuse (unknown argument, naive --now) exits 2
   - `home_tz` is never used as a fallback
 
@@ -102,11 +103,23 @@ def test_invalid_zone_unavailable(read_current_tz):
     assert module.resolve_current_tz() is None
 
 
-def test_unreadable_store_raises(read_current_tz, tmp_path, monkeypatch):
-    """A store with no tz_state table is an operational failure, not an
+def test_missing_store_file_raises(read_current_tz, tmp_path, monkeypatch):
+    """A store file that isn't there is an operational failure, not an
     'unavailable' answer — the function raises so main() can exit 1."""
     module, _ = read_current_tz
-    monkeypatch.setattr(module, "DB_PATH", str(tmp_path / "no-tz-table.db"))
+    monkeypatch.setattr(module, "DB_PATH", str(tmp_path / "missing.db"))
+    with pytest.raises(module.StoreUnreadable):
+        module.resolve_current_tz()
+
+
+def test_store_without_tz_state_table_raises(read_current_tz, tmp_path, monkeypatch):
+    """The other operational failure: the file opens as a database but
+    carries no `tz_state` table (an unmigrated or wrong store). Also a
+    raise, not an 'unavailable' answer."""
+    module, _ = read_current_tz
+    empty_db = tmp_path / "no-tz-table.db"
+    empty_db.write_bytes(b"")
+    monkeypatch.setattr(module, "DB_PATH", str(empty_db))
     with pytest.raises(module.StoreUnreadable):
         module.resolve_current_tz()
 
@@ -152,16 +165,29 @@ def test_main_emits_unavailable_shape_at_exit_0(read_current_tz, capsys):
     assert "no singleton row" in err
 
 
-def test_main_exits_1_when_store_unreadable(read_current_tz, tmp_path, monkeypatch, capsys):
-    """Missing file / no table: still the unavailable shape on stdout so a
-    surface can degrade, but exit 1 so a scheduling caller sees the
-    operational failure."""
+def test_main_exits_1_when_store_file_missing(read_current_tz, tmp_path, monkeypatch, capsys):
+    """Missing file: still the unavailable shape on stdout so a surface
+    can degrade, but exit 1 so a scheduling caller sees the operational
+    failure."""
     module, _ = read_current_tz
     monkeypatch.setattr(module, "DB_PATH", str(tmp_path / "missing.db"))
     code, payload, err = _run(module, capsys, "--now", PINNED_NOW)
     assert code == 1
     assert payload["available"] is False
     assert "cannot read tz_state" in err
+
+
+def test_main_exits_1_when_tz_state_table_missing(read_current_tz, tmp_path, monkeypatch, capsys):
+    """A readable database with no `tz_state` table takes the same exit-1
+    path as a missing file."""
+    module, _ = read_current_tz
+    empty_db = tmp_path / "no-tz-table.db"
+    empty_db.write_bytes(b"")
+    monkeypatch.setattr(module, "DB_PATH", str(empty_db))
+    code, payload, err = _run(module, capsys, "--now", PINNED_NOW)
+    assert code == 1
+    assert payload["available"] is False
+    assert "no such table" in err
 
 
 def test_main_rejects_naive_now(read_current_tz, capsys):

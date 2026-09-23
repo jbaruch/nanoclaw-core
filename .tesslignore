@@ -51,6 +51,9 @@ dist/
 AGENTS.md
 CLAUDE.md
 
+# Internal Herdr orchestration metadata is repo-only.
+.herdr/
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "package_roots": [
+    "skills/*",
+    "rules"
+  ],
+  "package_change_lines": 400,
+  "trust_boundary_paths": [
+    ".github/workflows/*",
+    ".github/fleet-review-enabled",
+    "rules/post-compaction-trust.md",
+    "rules/ground-truth.md",
+    "rules/read-full-content.md",
+    "skills/query-history/*"
+  ],
+  "cli_spec_paths": [
+    "skills/*/scripts/*.py"
+  ],
+  "cli_surface_markers": [
+    "add_parser(",
+    "add_argument(",
+    "ArgumentParser("
+  ],
+  "user_doc_paths": [
+    "README.md",
+    "docs/*",
+    "skills/*/SKILL.md"
+  ]
+}

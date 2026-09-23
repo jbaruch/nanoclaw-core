@@ -7,7 +7,7 @@ description: Read the operator's current IANA timezone from the host-owned `tz_s
 
 Process steps in order. Do not skip ahead.
 
-This skill is the single shared reader for the operator's current zone. Call it; do not copy `read-current-tz.py` into another plugin.
+This skill is the single shared reader for the operator's current zone. Call it; do not copy `skills/current-tz/scripts/read-current-tz.py` into another plugin.
 
 ## Step 1 — Read the operator's current zone
 

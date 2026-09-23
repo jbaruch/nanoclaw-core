@@ -43,6 +43,9 @@ dist/
 # checkout. Anchored so a consumer's own `tessl.json` is unaffected.
 .tessl/
 /tessl.json
+
+# Internal Herdr orchestration metadata is repo-only.
+.herdr/
 .claude/
 .agents/
 .codex/

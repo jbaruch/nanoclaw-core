@@ -1,11 +1,13 @@
 ---
 name: current-tz
-description: Read the operator's current IANA timezone from the host-owned `tz_state` singleton, resolved from their live location, with no home-zone guessing. Use when a skill needs the zone the operator is in right now — phrasing "today" / "tomorrow", picking the parse zone for a "remind me at 8am" reminder, deciding whether a local time has passed — instead of the container clock, `home_tz`, or a hand-written SQL read. The single shared reader; do not copy the script into another plugin.
+description: Read the operator's current IANA timezone from the host-owned `tz_state` singleton. Use when a skill needs the zone the operator is in right now — phrasing "today" / "tomorrow", picking the parse zone for a "remind me at 8am" reminder, deciding whether a local time has passed — instead of the container clock, `home_tz`, or a hand-written SQL read.
 ---
 
 # current-tz Skill
 
 Process steps in order. Do not skip ahead.
+
+This skill is the single shared reader for the operator's current zone. Call it; do not copy `read-current-tz.py` into another plugin.
 
 ## Step 1 — Read the operator's current zone
 

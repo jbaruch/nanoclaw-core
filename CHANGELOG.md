@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.146 — 2026-09-23
+
 ### Trim the current-tz description; move the shared-reader rule into the body (#965 sibling)
 
 `current-tz` description 486→353 B. The skill listing rides the prompt on every interactive turn while SKILL.md bodies load only on invocation, and `current-tz` appears in 6 session trees, so its description multiplies. The `resolved from their live location, with no home-zone guessing` clause is redundant with the `instead of … home_tz` clause that stays, and with Step 1's `The script never guesses` contract. The `single shared reader; do not copy the script into another plugin` rule was description-only — it moves into the body rather than being dropped, so the rule survives where the agent reads it.

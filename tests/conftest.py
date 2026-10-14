@@ -61,6 +61,24 @@ def now_vs_deadline():
     )
 
 
+@pytest.fixture
+def unanswered_precheck():
+    """Fresh-loaded no-wake check-unanswered cadence precheck."""
+    return _load(
+        "unanswered_precheck_under_test",
+        "skills/check-unanswered/scripts/unanswered-precheck.py",
+    )
+
+
+@pytest.fixture
+def unanswered_report():
+    """Fresh-loaded body-free check-unanswered report builder."""
+    return _load(
+        "unanswered_report_under_test",
+        "scripts/check-unanswered-report.py",
+    )
+
+
 def _seed_tz_state_db(db_path: str) -> None:
     """Apply the host `tz_state` singleton DDL to a fresh SQLite file,
     mirroring the orchestrator's state-010/012 migration shape so the

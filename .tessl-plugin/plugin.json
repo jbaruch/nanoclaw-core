@@ -6,7 +6,8 @@
   "skills": [
     "skills/query-history",
     "skills/now-vs-deadline",
-    "skills/current-tz"
+    "skills/current-tz",
+    "skills/check-unanswered"
   ],
   "rules": [
     "rules/core-behavior.md",

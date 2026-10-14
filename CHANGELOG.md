@@ -1,5 +1,16 @@
 # Changelog
 
+### Skill — revive `check-unanswered` as no-wake shadow measurement (#110)
+
+Restore the retired deterministic candidate predicate and historical eligible-group selector,
+then classify each new candidate with one bounded `jev-1.13.0` Choice request. The cadence
+precheck records append-only private outcomes under `/workspace/state/check-unanswered/` and
+always returns `wake_agent:false`; it has no message, reply, reaction, or enforcement path.
+Provider and state failures remain distinct from semantic labels. A body-free report aggregates
+candidates/day, label distribution, provider errors, truncation, tick health, latency, and opaque
+IDs for the later operator-confirmed sample. The fourteen-day clock requires an explicit stamp
+after an independently verified deployed no-effect tick; merge or first execution never starts it.
+
 ## 0.1.153 — 2026-10-20
 
 ### default-silence — a Jev-passed message is the agent's call (#116)
@@ -13,7 +24,6 @@ The rule now reads how a message arrived from the message itself, since the prom
 ### default-silence — scheduled wakes emit nothing; an emoji ack is never a message (jbaruch/nanoclaw-travel#321)
 
 A deduped flight-assist wake on 2026-09-25 sent a standalone `✈️` via `send_message`. The agent had read "silence means success" plus the emoji-ack habit as license for a content-free ping, and the owner got `[M] ✈️`. Any maintenance skill that reaches a no-op branch could do the same. The rule now says a scheduled or maintenance wake has no inbound message, so its silent success is zero output, and an acknowledgement emoji is only ever a reaction on an inbound user message, never a standalone `send_message`. `core-behavior.md` Async Tasks now scopes its acknowledgement reaction to tasks that answer an inbound user message, so the two rules agree.
-
 ## 0.1.146 — 2026-09-23
 
 ### Trim the current-tz description; move the shared-reader rule into the body (#965 sibling)

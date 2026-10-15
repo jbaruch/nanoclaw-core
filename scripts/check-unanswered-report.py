@@ -379,6 +379,8 @@ def read_root(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         events = [_validate_event(json.loads(line)) for line in raw_lines]
     except FileNotFoundError:
         _fail("shadow state root")
+    except OSError:
+        _fail("shadow state root")
     except (UnicodeError, ValueError):
         _fail("shadow state root")
     return state, events
@@ -390,6 +392,8 @@ def read_manifest(path: Path) -> dict[str, Any]:
             _fail("expected-groups manifest")
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
+        _fail("expected-groups manifest")
+    except OSError:
         _fail("expected-groups manifest")
     except (UnicodeError, ValueError):
         _fail("expected-groups manifest")
@@ -427,6 +431,8 @@ def read_confirmations(path: Path) -> list[dict[str, Any]]:
             _fail("operator confirmations")
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
+        _fail("operator confirmations")
+    except OSError:
         _fail("operator confirmations")
     except (UnicodeError, ValueError):
         _fail("operator confirmations")

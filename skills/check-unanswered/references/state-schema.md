@@ -31,10 +31,14 @@ use the accompanying opaque candidate ID instead.
 - `error`: optional dedupe key/opaque ID plus a fixed error category. Provider response bodies,
   request content, credentials, and exception text are never recorded.
 - `tick`: eligibility, scan-health counters, page-full backlog evidence, lifecycle, scan cutoff,
-  and the highest `(timestamp, id)` cursor. Candidate queries consume deterministic pages of at
-  most 50 rows; a full page leaves backlog for the next tick.
+  and the highest `(timestamp, id)` cursor. Candidate queries reconcile the rolling historical
+  lookback with older cursor backlog, excluding durable `candidate_started` locators before the
+  query limit. They consume deterministic pages of at most 50 unstarted rows, so late-ingested
+  rows remain visible without started rows starving the bounded page.
 - `window_started`: the externally verified exact deployment revision, explicit UTC start, and
-  eligible proof-tick timestamp. The start must equal that tick and cannot be in the future.
+  eligible proof-tick timestamp. The start must equal that tick and cannot be in the future. The
+  event is written before active state; either side of an interrupted transition is reconciled
+  idempotently on retry.
 - `lifecycle`: terminal `capacity_exhausted` evidence. No later provider request is allowed.
 
 Every candidate has at most one `candidate_started` event. A started candidate has zero or one

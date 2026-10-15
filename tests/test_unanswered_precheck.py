@@ -334,7 +334,8 @@ def test_pre_call_marker_prevents_retry_after_interruption(unanswered_precheck, 
         now=NOW,
         transport=lambda *_args: pytest.fail("provider retried"),
     )
-    assert payload["data"]["deduped"] == 1
+    assert payload["data"]["candidates"] == 0
+    assert payload["data"]["deduped"] == 0
 
 
 def test_provider_failure_is_error_not_cant_tell(unanswered_precheck, tmp_path):
@@ -427,6 +428,123 @@ def test_window_start_is_explicit_and_idempotent(unanswered_precheck, tmp_path):
     assert sum(event["event"] == "window_started" for event in _events(module, state_dir)) == 1
 
 
+def test_window_start_recovers_when_state_write_is_interrupted(
+    unanswered_precheck, tmp_path, monkeypatch
+):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=_provider(module),
+    )
+    original_atomic_json = module.atomic_json
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(module, "atomic_json", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        module.stamp_window(
+            state_dir=state_dir,
+            chat_jid=CHAT,
+            start=NOW,
+            source_revision=REVISION,
+            now=NOW,
+        )
+    assert module.load_state(state_dir, CHAT)["window_start_utc"] is None
+    assert sum(event["event"] == "window_started" for event in _events(module, state_dir)) == 1
+
+    monkeypatch.setattr(module, "atomic_json", original_atomic_json)
+    payload = module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert payload["data"]["status"] == "window_started"
+    assert module.load_state(state_dir, CHAT)["lifecycle"] == "active"
+    assert sum(event["event"] == "window_started" for event in _events(module, state_dir)) == 1
+
+
+def test_window_start_recovers_when_event_write_is_interrupted(
+    unanswered_precheck, tmp_path, monkeypatch
+):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=_provider(module),
+    )
+    original_append_event = module.append_event
+
+    def interrupted(path, event):
+        if event.get("event") == "window_started":
+            raise KeyboardInterrupt
+        original_append_event(path, event)
+
+    monkeypatch.setattr(module, "append_event", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        module.stamp_window(
+            state_dir=state_dir,
+            chat_jid=CHAT,
+            start=NOW,
+            source_revision=REVISION,
+            now=NOW,
+        )
+    assert module.load_state(state_dir, CHAT)["window_start_utc"] is None
+    assert not any(event["event"] == "window_started" for event in _events(module, state_dir))
+
+    monkeypatch.setattr(module, "append_event", original_append_event)
+    module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert module.load_state(state_dir, CHAT)["lifecycle"] == "active"
+    assert sum(event["event"] == "window_started" for event in _events(module, state_dir)) == 1
+
+
+def test_window_start_repairs_state_first_interruption(unanswered_precheck, tmp_path):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=_provider(module),
+    )
+    interrupted_state = module.load_state(state_dir, CHAT)
+    interrupted_state["window_start_utc"] = module.utc_text(NOW)
+    interrupted_state["deployment_source_revision"] = REVISION
+    interrupted_state["lifecycle"] = "active"
+    module.atomic_json(state_dir / "state.json", interrupted_state)
+
+    module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert sum(event["event"] == "window_started" for event in _events(module, state_dir)) == 1
+
+
 def test_window_start_rejects_backdating_future_and_revision_change(unanswered_precheck, tmp_path):
     module = unanswered_precheck
     database = tmp_path / "messages.db"
@@ -511,6 +629,59 @@ def test_tick_pages_fifty_candidates_and_recovers_past_lookback(unanswered_prech
     assert recovered["data"]["candidates"] == 5
     assert len(calls) == 55
     assert module.load_state(state_dir, CHAT)["cursor"]["timestamp"] == "2026-09-25T11:59:00Z"
+
+
+def test_reconciliation_finds_late_candidate_without_started_row_starvation(
+    unanswered_precheck, tmp_path
+):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    for index in range(50):
+        _message(database, f"candidate-{index:02d}", f"2026-09-23T10:{index:02d}:00Z")
+    calls = []
+
+    def transport(*args):
+        calls.append(args)
+        return _provider(module)(*args)
+
+    first = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=transport,
+    )
+    assert first["data"]["candidates"] == 50
+    module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW,
+    )
+    _message(database, "late", "2026-09-23T10:00:30Z")
+
+    reconciled = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW + timedelta(minutes=30),
+        transport=transport,
+    )
+    assert reconciled["data"] == {
+        "status": "shadow_complete",
+        "candidates": 1,
+        "classified": 1,
+        "errors": 0,
+        "deduped": 0,
+    }
+    assert len(calls) == 51
+    starts = [
+        event for event in _events(module, state_dir) if event["event"] == "candidate_started"
+    ]
+    assert starts[-1]["message_id"] == "late"
 
 
 def test_pre_window_hold_and_completed_lifecycle_make_no_provider_calls(
@@ -621,6 +792,41 @@ def test_main_records_corrupt_group_config_as_tick_error(
     assert payload["wake_agent"] is False
     assert payload["data"]["category"] == "group_config_invalid"
     assert module.read_events(state_dir)[0]["scope"] == "tick"
+
+
+def test_main_keeps_no_wake_output_when_tick_error_record_hits_capacity(
+    unanswered_precheck, tmp_path, monkeypatch, capsys
+):
+    module = unanswered_precheck
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    padding = {
+        "schema_version": 1,
+        "event": "error",
+        "at_utc": "2026-09-23T11:00:00Z",
+        "scope": "tick",
+        "category": "database_unavailable",
+        "padding": "x" * 230,
+    }
+    (state_dir / "events.jsonl").write_text(json.dumps(padding) + "\n")
+    monkeypatch.setattr(module, "MAX_LEDGER_BYTES", 520)
+    monkeypatch.setattr(module, "LEDGER_CAPACITY_RESERVE_BYTES", 150)
+    monkeypatch.setattr(module, "STATE_DIR", state_dir)
+    monkeypatch.setattr(module, "DB_PATH", tmp_path / "missing.db")
+    monkeypatch.setenv("NANOCLAW_CHAT_JID", CHAT)
+
+    assert module.main([]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload == {
+        "wake_agent": False,
+        "data": {"status": "error", "category": "database_unavailable"},
+    }
+    assert "state_error_record_failed" in captured.err
+    assert "database_unavailable" in captured.err
+    assert json.loads((state_dir / "events.jsonl").read_text().splitlines()[-1])["status"] == (
+        "capacity_exhausted"
+    )
 
 
 def test_source_has_no_runtime_effect_surface(unanswered_precheck):

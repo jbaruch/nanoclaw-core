@@ -240,3 +240,70 @@ def test_report_refuses_unknown_schema(unanswered_report, tmp_path):
     _write_events(root, [])
     with pytest.raises(unanswered_report.ReportError, match="invalid shadow state"):
         unanswered_report.build_report([root], expected_manifest=_manifest(RUN_A))
+
+
+@pytest.mark.parametrize(
+    ("target_name", "operation", "expected_diagnostic"),
+    [
+        ("state", "stat", "invalid shadow state root"),
+        ("state", "read_text", "invalid shadow state root"),
+        ("events", "stat", "invalid shadow state root"),
+        ("events", "read_text", "invalid shadow state root"),
+        ("manifest", "stat", "invalid expected-groups manifest"),
+        ("manifest", "read_text", "invalid expected-groups manifest"),
+        ("confirmations", "stat", "invalid operator confirmations"),
+        ("confirmations", "read_text", "invalid operator confirmations"),
+    ],
+)
+def test_cli_normalizes_filesystem_failures_without_private_paths(
+    unanswered_report,
+    tmp_path,
+    monkeypatch,
+    capsys,
+    target_name,
+    operation,
+    expected_diagnostic,
+):
+    module = unanswered_report
+    root = _state(tmp_path / "PRIVATE-CANARY-state", run_id=RUN_A)
+    _write_events(root, [])
+    manifest = tmp_path / "PRIVATE-CANARY-manifest.json"
+    manifest.write_text(json.dumps(_manifest(RUN_A)))
+    confirmations = tmp_path / "PRIVATE-CANARY-confirmations.json"
+    confirmations.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "confirmations": [{"opaque_id": OPAQUE_A, "real_drop": False}],
+            }
+        )
+    )
+    targets = {
+        "state": root / "state.json",
+        "events": root / "events.jsonl",
+        "manifest": manifest,
+        "confirmations": confirmations,
+    }
+    target = targets[target_name]
+    original = getattr(Path, operation)
+
+    def fail_selected(path, *args, **kwargs):
+        if path == target:
+            raise PermissionError(f"PRIVATE-CANARY {path}")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, operation, fail_selected)
+    result = module.main(
+        [
+            str(root),
+            "--expected-groups",
+            str(manifest),
+            "--confirmations",
+            str(confirmations),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert result == 1
+    assert captured.out == ""
+    assert expected_diagnostic in captured.err
+    assert "PRIVATE-CANARY" not in captured.err

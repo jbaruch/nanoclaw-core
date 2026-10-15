@@ -479,6 +479,8 @@ def validate_choice(response: Any) -> dict[str, Any]:
         or not valid_number(answer.get("confidence"))
     ):
         raise ShadowError("provider_response_invalid")
+    if probabilities[answer["choice"]] != max(probabilities.values()):
+        raise ShadowError("provider_response_invalid")
     usage = response.get("usage")
     if not isinstance(usage, dict):
         usage = {}

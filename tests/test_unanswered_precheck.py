@@ -78,11 +78,10 @@ def _reaction(path, message_id, *, reactor="bot@telegram"):
 
 
 def _provider(module, label="addressed_inline", probabilities=None):
-    distribution = probabilities or {
-        "addressed_inline": 0.8,
-        "unanswered": 0.1,
-        "cant_tell": 0.1,
-    }
+    distribution = probabilities
+    if distribution is None:
+        distribution = {choice: 0.1 for choice in module.LABELS}
+        distribution[label] = 0.8
 
     def transport(url, body, headers, timeout):
         assert url == module.ENDPOINT
@@ -222,7 +221,48 @@ def test_classify_uses_bounded_untrusted_state_and_validates_choice(unanswered_p
         _provider(module, label="unanswered"),
     )
     assert result["label"] == "unanswered"
-    assert result["probabilities"]["unanswered"] == 0.1
+    assert result["probabilities"]["unanswered"] == 0.8
+
+
+@pytest.mark.parametrize(
+    ("label", "distribution"),
+    [
+        (
+            "unanswered",
+            {"addressed_inline": 0.8, "unanswered": 0.1, "cant_tell": 0.1},
+        ),
+        (
+            "cant_tell",
+            {"addressed_inline": 0.45, "unanswered": 0.45, "cant_tell": 0.1},
+        ),
+    ],
+)
+def test_choice_below_maximum_is_an_error(unanswered_precheck, label, distribution):
+    module = unanswered_precheck
+    with pytest.raises(module.ShadowError, match="provider_response_invalid"):
+        module.classify(
+            {"content": "x", "timestamp": "2026-09-23T10:00:00Z"},
+            [],
+            _provider(module, label=label, probabilities=distribution),
+        )
+
+
+def test_choice_may_select_one_of_tied_maxima(unanswered_precheck):
+    module = unanswered_precheck
+    result = module.classify(
+        {"content": "x", "timestamp": "2026-09-23T10:00:00Z"},
+        [],
+        _provider(
+            module,
+            label="unanswered",
+            probabilities={
+                "addressed_inline": 0.45,
+                "unanswered": 0.45,
+                "cant_tell": 0.1,
+            },
+        ),
+    )
+    assert result["label"] == "unanswered"
 
 
 @pytest.mark.parametrize(
@@ -273,6 +313,45 @@ def test_tick_records_decision_and_never_wakes(unanswered_precheck, tmp_path):
     ]
     assert events[1]["latency_ms"] == 250
     assert "private body" not in (state_dir / "events.jsonl").read_text()
+
+
+def test_tick_records_choice_mismatch_as_provider_error(unanswered_precheck, tmp_path):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    _message(database, "candidate", "2026-09-23T10:00:00Z")
+
+    payload = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=_provider(
+            module,
+            label="unanswered",
+            probabilities={
+                "addressed_inline": 0.8,
+                "unanswered": 0.1,
+                "cant_tell": 0.1,
+            },
+        ),
+        monotonic=iter([1.0, 1.25]).__next__,
+    )
+
+    assert payload == {
+        "wake_agent": False,
+        "data": {
+            "status": "shadow_complete",
+            "candidates": 1,
+            "classified": 0,
+            "errors": 1,
+            "deduped": 0,
+        },
+    }
+    events = _events(module, state_dir)
+    assert [event["event"] for event in events] == ["candidate_started", "error", "tick"]
+    assert events[1]["category"] == "provider_response_invalid"
 
 
 def test_restart_dedupes_before_provider_call(unanswered_precheck, tmp_path):

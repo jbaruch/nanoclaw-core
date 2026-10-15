@@ -247,6 +247,8 @@ def _validate_event(value: Any) -> dict[str, Any]:
             _fail("decision event")
         if not math.isclose(sum(probabilities.values()), 1.0, abs_tol=1e-3):
             _fail("decision event")
+        if probabilities[event["label"]] != max(probabilities.values()):
+            _fail("decision event")
         confidence = event["confidence"]
         if (
             type(confidence) not in (int, float)

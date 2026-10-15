@@ -63,14 +63,15 @@ def _candidate(opaque=OPAQUE_A):
     }
 
 
-def _decision(opaque=OPAQUE_A, label="unanswered"):
+def _decision(opaque=OPAQUE_A, label="unanswered", probabilities=None):
     return {
         "event": "decision",
         "at_utc": _utc(START + timedelta(seconds=1)),
         "candidate_key": "private-key-" + opaque,
         "opaque_id": opaque,
         "label": label,
-        "probabilities": {
+        "probabilities": probabilities
+        or {
             "addressed_inline": 0.1,
             "unanswered": 0.8,
             "cant_tell": 0.1,
@@ -142,6 +143,46 @@ def test_report_aggregates_without_private_locators(unanswered_report, tmp_path)
     assert report["unanswered_sample_opaque_ids"] == [OPAQUE_A]
     assert "private-message" not in encoded
     assert "private-key" not in encoded
+
+
+def test_report_refuses_decision_label_below_probability_maximum(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A)
+    _write_events(
+        root,
+        [
+            _candidate(),
+            _decision(
+                probabilities={
+                    "addressed_inline": 0.8,
+                    "unanswered": 0.1,
+                    "cant_tell": 0.1,
+                }
+            ),
+        ],
+    )
+    with pytest.raises(unanswered_report.ReportError, match="invalid decision event"):
+        unanswered_report.build_report([root], expected_manifest=_manifest(RUN_A))
+
+
+@pytest.mark.parametrize("label", ["addressed_inline", "unanswered"])
+def test_report_accepts_either_tied_maximum(unanswered_report, tmp_path, label):
+    root = _state(tmp_path / "state", run_id=RUN_A)
+    _write_events(
+        root,
+        [
+            _candidate(),
+            _decision(
+                label=label,
+                probabilities={
+                    "addressed_inline": 0.45,
+                    "unanswered": 0.45,
+                    "cant_tell": 0.1,
+                },
+            ),
+        ],
+    )
+    report = unanswered_report.build_report([root], expected_manifest=_manifest(RUN_A))
+    assert report["label_distribution"][label] == 1
 
 
 def test_sparse_window_stays_pending_and_reports_gap(unanswered_report, tmp_path):

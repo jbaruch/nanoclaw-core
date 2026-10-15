@@ -9,9 +9,12 @@ report script is a read-only consumer. Each group receives its own state mount.
 ## Files
 
 - `state.json` carries `schema_version`, `run_id`, `group_id`, scan cursor, model/question
-  versions, deployment revision, and the explicitly stamped UTC measurement-window start.
-- `events.jsonl` is append-only. Each line carries `schema_version`, `event`, `at_utc`, and
-  event-specific body-free fields.
+  versions, deployment revision, lifecycle, and the explicitly stamped UTC
+  measurement-window start.
+- `events.jsonl` is append-only and capped at 64 MiB. Each line carries `schema_version`,
+  `event`, `at_utc`, and event-specific body-free fields. Reaching the cap writes a terminal
+  `capacity_exhausted` lifecycle record, stops provider work, and prevents completion rather
+  than discarding required candidates.
 - `.lock` serializes cadence ticks and explicit window stamping in one group.
 
 Message bodies and following-message content never enter these files. Private message locators
@@ -27,12 +30,20 @@ use the accompanying opaque candidate ID instead.
   token counts, model, and question version.
 - `error`: optional dedupe key/opaque ID plus a fixed error category. Provider response bodies,
   request content, credentials, and exception text are never recorded.
-- `tick`: eligibility and scan-health counters. A completed tick records the highest
-  `(timestamp, id)` observed as the scan cursor.
-- `window_started`: the externally verified deployment revision and explicit UTC start.
+- `tick`: eligibility, scan-health counters, page-full backlog evidence, lifecycle, scan cutoff,
+  and the highest `(timestamp, id)` cursor. Candidate queries consume deterministic pages of at
+  most 50 rows; a full page leaves backlog for the next tick.
+- `window_started`: the externally verified exact deployment revision, explicit UTC start, and
+  eligible proof-tick timestamp. The start must equal that tick and cannot be in the future.
+- `lifecycle`: terminal `capacity_exhausted` evidence. No later provider request is allowed.
 
 Every candidate has at most one `candidate_started` event. A started candidate has zero or one
 terminal `decision`/`error`; zero is an interrupted attempt reported as unresolved.
+
+Before a window is stamped, one eligible tick is allowed and later cadence invocations hold with
+no provider work. During an active window the cursor drains all candidates through the exact
+fourteen-day end. Once that population is drained, lifecycle becomes `measurement_complete` and
+later ticks perform no provider work.
 
 ## Version handling
 
@@ -45,3 +56,13 @@ changes require a new schema version and an owner migration before deployment.
 State is a private measurement snapshot, not authority to contact a user or enable enforcement.
 The fourteen-day clock starts only from an explicit `window_started` event written after the
 deployed revision, cadence row, and live no-effect tick have been independently verified.
+The body-free report requires a frozen expected-group manifest and validates every state/event
+field against this schema. It reports missing and extra run IDs, requires eligible tick gaps no
+larger than one hour, and accepts operator confirmations only as unique opaque IDs that resolve
+to actual `unanswered` decisions in the active window.
+
+The expected-group manifest is an exact object with `schema_version`, the 40-hex
+`deployment_source_revision`, and a unique nonempty `expected_run_ids` list containing the
+`check-unanswered-<20 hex>` IDs from deployment/registration evidence. The optional confirmation
+file is an exact object with `schema_version` and a nonempty `confirmations` list. Each confirmation
+has only a unique 24-hex `opaque_id` and boolean `real_drop`; counts are derived, never supplied.

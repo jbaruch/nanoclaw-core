@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Run one no-wake check-unanswered shadow tick.
 
-The deterministic candidate predicate is restored from ``8aab88e^``: in the
-current chat, select user messages inside the fixed lookback/grace window that
-have neither a threaded bot reply nor a bot reaction. A group is eligible only
-when its registered row is main or its ``containerConfig.enableHeartbeat`` is
-true, preserving the historical heartbeat group set.
+The deterministic candidate predicate is restored from ``8aab88e^``: begin at
+the fixed lookback boundary, then consume cursor-ordered user messages through
+the grace cutoff when they have neither a threaded bot reply nor a bot reaction.
+A group is eligible only when its registered row is main or its
+``containerConfig.enableHeartbeat`` is true, preserving the historical group set.
 
-For each candidate not already marked in the append-only event log, append the
-dedupe marker first, project a following-message window capped by both message
-count and UTF-8 bytes, and issue one TypeSafe System One Choice request. Every
-exit prints one JSON object with ``wake_agent: false``. This script has no
-messaging, reply, reaction, or wake capability.
+For each candidate in a page of at most 50 not already marked in the bounded
+append-only event log, append the dedupe marker first, project a following-message
+window capped by both message count and UTF-8 bytes, and issue one TypeSafe System
+One Choice request. Every exit prints one JSON object with ``wake_agent: false``.
+This script has no messaging, reply, reaction, or wake capability.
 
 ``--stamp-window-start`` is an explicit post-deployment operation. It requires
 an already completed eligible tick and a source revision, then records the UTC
@@ -29,6 +29,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -73,8 +74,13 @@ MAX_FOLLOWING_MESSAGES = 40
 MAX_FOLLOWING_BYTES = 32_768
 MAX_RESPONSE_BYTES = 1_048_576
 HTTP_TIMEOUT_SECONDS = 30.0
+MAX_CANDIDATES_PER_TICK = 50
+MAX_LEDGER_BYTES = 64 * 1024 * 1024
+LEDGER_CAPACITY_RESERVE_BYTES = 4_096
+MEASUREMENT_DAYS = 14
 STATE_DIR = Path(os.environ.get("CHECK_UNANSWERED_STATE_DIR", "/workspace/state/check-unanswered"))
 DB_PATH = Path(os.environ.get("NANOCLAW_DB", "/workspace/store/messages.db"))
+SOURCE_REVISION_PATTERN = re.compile(r"[0-9a-f]{40}")
 
 
 class ShadowError(Exception):
@@ -150,10 +156,30 @@ def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def append_event(state_dir: Path, event: Mapping[str, Any]) -> None:
-    """Append and fsync one complete JSONL record."""
+    """Append one record without allowing the private ledger to grow forever."""
     state_dir.mkdir(parents=True, exist_ok=True)
     path = state_dir / "events.jsonl"
     encoded = json_bytes(event) + b"\n"
+    current_size = path.stat().st_size if path.exists() else 0
+    soft_limit = MAX_LEDGER_BYTES - LEDGER_CAPACITY_RESERVE_BYTES
+    if current_size + len(encoded) > soft_limit:
+        capacity = (
+            json_bytes(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "event": "lifecycle",
+                    "at_utc": str(event.get("at_utc", "1970-01-01T00:00:00Z")),
+                    "status": "capacity_exhausted",
+                }
+            )
+            + b"\n"
+        )
+        if current_size + len(capacity) <= MAX_LEDGER_BYTES:
+            with path.open("ab") as handle:
+                handle.write(capacity)
+                handle.flush()
+                os.fsync(handle.fileno())
+        raise ShadowError("state_capacity_exceeded")
     with path.open("ab") as handle:
         handle.write(encoded)
         handle.flush()
@@ -163,6 +189,8 @@ def append_event(state_dir: Path, event: Mapping[str, Any]) -> None:
 def read_events(state_dir: Path) -> list[dict[str, Any]]:
     path = state_dir / "events.jsonl"
     try:
+        if path.stat().st_size > MAX_LEDGER_BYTES:
+            raise ShadowError("state_capacity_exceeded")
         lines = path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         return []
@@ -193,6 +221,7 @@ def load_state(state_dir: Path, group_id: str) -> dict[str, Any]:
             "cursor": None,
             "deployment_source_revision": None,
             "window_start_utc": None,
+            "lifecycle": "initializing",
         }
     except (UnicodeError, ValueError) as exc:
         raise ShadowError("state_invalid") from exc
@@ -201,6 +230,13 @@ def load_state(state_dir: Path, group_id: str) -> dict[str, Any]:
     expected = hashlib.sha256(group_id.encode("utf-8")).hexdigest()[:20]
     if raw.get("group_id") != expected:
         raise ShadowError("state_group_mismatch")
+    if raw.get("lifecycle") not in {
+        "initializing",
+        "awaiting_window_start",
+        "active",
+        "measurement_complete",
+    }:
+        raise ShadowError("state_invalid")
     return raw
 
 
@@ -217,7 +253,7 @@ def open_database(path: Path) -> sqlite3.Connection:
 def group_eligibility(connection: sqlite3.Connection, chat_jid: str) -> tuple[bool, str]:
     try:
         row = connection.execute(
-            "SELECT is_main, container_config FROM registered_groups WHERE jid = ?",
+            "SELECT is_main, container_config FROM registered_groups WHERE jid = ? LIMIT 1",
             (chat_jid,),
         ).fetchone()
     except sqlite3.Error as exc:
@@ -241,10 +277,15 @@ def group_eligibility(connection: sqlite3.Connection, chat_jid: str) -> tuple[bo
 
 
 def find_candidates(
-    connection: sqlite3.Connection, chat_jid: str, now: datetime
+    connection: sqlite3.Connection,
+    chat_jid: str,
+    *,
+    cursor: Mapping[str, str],
+    scan_cutoff: datetime,
 ) -> list[dict[str, Any]]:
-    cutoff = utc_text(now - timedelta(hours=LOOKBACK_HOURS))
-    grace_cutoff = utc_text(now - timedelta(seconds=GRACE_SECONDS))
+    cursor_timestamp = cursor["timestamp"]
+    cursor_id = cursor["id"]
+    cutoff = utc_text(scan_cutoff)
     try:
         rows = connection.execute(
             """
@@ -253,7 +294,7 @@ def find_candidates(
             WHERE m.chat_jid = ?
               AND m.is_from_me = 0
               AND m.is_bot_message = 0
-              AND m.timestamp > ?
+              AND (m.timestamp > ? OR (m.timestamp = ? AND m.id > ?))
               AND m.timestamp < ?
               AND NOT EXISTS (
                 SELECT 1 FROM messages r
@@ -268,8 +309,16 @@ def find_candidates(
                   AND rc.reactor_jid = 'bot@telegram'
               )
             ORDER BY m.timestamp ASC, m.id ASC
+            LIMIT ?
             """,
-            (chat_jid, cutoff, grace_cutoff),
+            (
+                chat_jid,
+                cursor_timestamp,
+                cursor_timestamp,
+                cursor_id,
+                cutoff,
+                MAX_CANDIDATES_PER_TICK,
+            ),
         ).fetchall()
     except sqlite3.Error as exc:
         raise ShadowError("candidate_query_failed") from exc
@@ -491,6 +540,18 @@ def run_tick(
         raise ShadowError("chat_jid_missing")
     state = load_state(state_dir, chat_jid)
     events = read_events(state_dir)
+    if any(
+        event.get("event") == "lifecycle" and event.get("status") == "capacity_exhausted"
+        for event in events
+    ):
+        return no_wake("measurement_paused", category="state_capacity_exceeded")
+    if state["lifecycle"] == "measurement_complete":
+        return no_wake("measurement_complete")
+    eligible_ticks = [
+        event for event in events if event.get("event") == "tick" and event.get("eligible") is True
+    ]
+    if state.get("window_start_utc") is None and eligible_ticks:
+        return no_wake("awaiting_window_start")
     started = {
         event.get("candidate_key") for event in events if event.get("event") == "candidate_started"
     }
@@ -500,7 +561,27 @@ def run_tick(
             event = {**base_event("tick", now), "eligible": False, "reason": reason}
             append_event(state_dir, event)
             return no_wake("ineligible", reason=reason)
-        candidates = find_candidates(connection, chat_jid, now)
+        if state["cursor"] is None:
+            cursor = {
+                "timestamp": utc_text(now - timedelta(hours=LOOKBACK_HOURS)),
+                "id": "\uffff",
+            }
+        else:
+            cursor = state["cursor"]
+        window_start_text = state.get("window_start_utc")
+        window_end = (
+            parse_utc(str(window_start_text)) + timedelta(days=MEASUREMENT_DAYS)
+            if window_start_text is not None
+            else None
+        )
+        grace_cutoff = now - timedelta(seconds=GRACE_SECONDS)
+        scan_cutoff = min(grace_cutoff, window_end) if window_end is not None else grace_cutoff
+        candidates = find_candidates(
+            connection,
+            chat_jid,
+            cursor=cursor,
+            scan_cutoff=scan_cutoff,
+        )
         classified = 0
         errors = 0
         skipped = 0
@@ -560,11 +641,17 @@ def run_tick(
                 },
             )
             classified += 1
-    cursor = None
+    page_full = len(candidates) == MAX_CANDIDATES_PER_TICK
     if candidates:
         last = candidates[-1]
         cursor = {"timestamp": str(last["timestamp"]), "id": str(last["id"])}
-        state["cursor"] = cursor
+    if not page_full:
+        cursor = {"timestamp": utc_text(scan_cutoff), "id": "\uffff"}
+    state["cursor"] = cursor
+    if state["lifecycle"] == "initializing":
+        state["lifecycle"] = "awaiting_window_start"
+    elif window_end is not None and scan_cutoff >= window_end and not page_full:
+        state["lifecycle"] = "measurement_complete"
     atomic_json(state_dir / "state.json", state)
     append_event(
         state_dir,
@@ -577,6 +664,9 @@ def run_tick(
             "error_count": errors,
             "deduped_count": skipped,
             "cursor": cursor,
+            "page_full": page_full,
+            "scan_cutoff_utc": utc_text(scan_cutoff),
+            "lifecycle": state["lifecycle"],
         },
     )
     return no_wake(
@@ -593,19 +683,32 @@ def stamp_window(
 ) -> dict[str, Any]:
     if not chat_jid:
         raise ShadowError("chat_jid_missing")
-    if not source_revision or any(char.isspace() for char in source_revision):
+    if SOURCE_REVISION_PATTERN.fullmatch(source_revision) is None:
         raise ShadowError("source_revision_invalid")
     state = load_state(state_dir, chat_jid)
     events = read_events(state_dir)
-    if not any(event.get("event") == "tick" and event.get("eligible") is True for event in events):
+    eligible_ticks = [
+        event for event in events if event.get("event") == "tick" and event.get("eligible") is True
+    ]
+    if not eligible_ticks:
         raise ShadowError("verified_tick_missing")
     normalized = utc_text(start)
+    if start > now:
+        raise ShadowError("window_start_future")
+    proof_tick = max(eligible_ticks, key=lambda event: parse_utc(str(event["at_utc"])))
+    proof_time = parse_utc(str(proof_tick["at_utc"]))
+    if start != proof_time:
+        raise ShadowError("window_start_not_verified_tick")
     existing = state.get("window_start_utc")
     if existing is not None and existing != normalized:
         raise ShadowError("window_already_started")
+    existing_revision = state.get("deployment_source_revision")
+    if existing_revision is not None and existing_revision != source_revision:
+        raise ShadowError("source_revision_mismatch")
     if existing is None:
         state["window_start_utc"] = normalized
         state["deployment_source_revision"] = source_revision
+        state["lifecycle"] = "active"
         atomic_json(state_dir / "state.json", state)
         append_event(
             state_dir,
@@ -613,6 +716,7 @@ def stamp_window(
                 **base_event("window_started", now),
                 "window_start_utc": normalized,
                 "deployment_source_revision": source_revision,
+                "verified_tick_at_utc": utc_text(proof_time),
             },
         )
     return no_wake("window_started", window_start_utc=normalized)

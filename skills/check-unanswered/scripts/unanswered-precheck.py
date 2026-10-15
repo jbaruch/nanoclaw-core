@@ -282,11 +282,21 @@ def find_candidates(
     *,
     cursor: Mapping[str, str],
     scan_cutoff: datetime,
+    started_candidates: set[tuple[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     cursor_timestamp = cursor["timestamp"]
     cursor_id = cursor["id"]
     cutoff = utc_text(scan_cutoff)
     try:
+        connection.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS check_unanswered_started "
+            "(timestamp TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (timestamp, id))"
+        )
+        connection.execute("DELETE FROM check_unanswered_started")
+        connection.executemany(
+            "INSERT INTO check_unanswered_started (timestamp, id) VALUES (?, ?)",
+            sorted(started_candidates or set()),
+        )
         rows = connection.execute(
             """
             SELECT m.id, m.sender_name, m.content, m.timestamp
@@ -296,6 +306,10 @@ def find_candidates(
               AND m.is_bot_message = 0
               AND (m.timestamp > ? OR (m.timestamp = ? AND m.id > ?))
               AND m.timestamp < ?
+              AND NOT EXISTS (
+                SELECT 1 FROM check_unanswered_started s
+                WHERE s.timestamp = m.timestamp AND s.id = m.id
+              )
               AND NOT EXISTS (
                 SELECT 1 FROM messages r
                 WHERE r.chat_jid = m.chat_jid
@@ -555,6 +569,11 @@ def run_tick(
     started = {
         event.get("candidate_key") for event in events if event.get("event") == "candidate_started"
     }
+    started_candidates = {
+        (str(event.get("candidate_timestamp")), str(event.get("message_id")))
+        for event in events
+        if event.get("event") == "candidate_started"
+    }
     with open_database(db_path) as connection:
         eligible, reason = group_eligibility(connection, chat_jid)
         if not eligible:
@@ -576,11 +595,17 @@ def run_tick(
         )
         grace_cutoff = now - timedelta(seconds=GRACE_SECONDS)
         scan_cutoff = min(grace_cutoff, window_end) if window_end is not None else grace_cutoff
+        rolling_start = now - timedelta(hours=LOOKBACK_HOURS)
+        if parse_utc(str(cursor["timestamp"])) < rolling_start:
+            scan_cursor = cursor
+        else:
+            scan_cursor = {"timestamp": utc_text(rolling_start), "id": "\uffff"}
         candidates = find_candidates(
             connection,
             chat_jid,
-            cursor=cursor,
+            cursor=scan_cursor,
             scan_cutoff=scan_cutoff,
+            started_candidates=started_candidates,
         )
         classified = 0
         errors = 0
@@ -705,11 +730,18 @@ def stamp_window(
     existing_revision = state.get("deployment_source_revision")
     if existing_revision is not None and existing_revision != source_revision:
         raise ShadowError("source_revision_mismatch")
-    if existing is None:
-        state["window_start_utc"] = normalized
-        state["deployment_source_revision"] = source_revision
-        state["lifecycle"] = "active"
-        atomic_json(state_dir / "state.json", state)
+    window_events = [event for event in events if event.get("event") == "window_started"]
+    if len(window_events) > 1:
+        raise ShadowError("window_start_transition_invalid")
+    if window_events:
+        event = window_events[0]
+        if (
+            event.get("window_start_utc") != normalized
+            or event.get("deployment_source_revision") != source_revision
+            or event.get("verified_tick_at_utc") != utc_text(proof_time)
+        ):
+            raise ShadowError("window_start_transition_invalid")
+    else:
         append_event(
             state_dir,
             {
@@ -719,6 +751,11 @@ def stamp_window(
                 "verified_tick_at_utc": utc_text(proof_time),
             },
         )
+    if existing is None:
+        state["window_start_utc"] = normalized
+        state["deployment_source_revision"] = source_revision
+        state["lifecycle"] = "active"
+        atomic_json(state_dir / "state.json", state)
     return no_wake("window_started", window_start_utc=normalized)
 
 
@@ -776,7 +813,7 @@ def main(argv: list[str] | None = None) -> int:
                         "category": exc.category,
                     },
                 )
-            except OSError:
+            except (OSError, ShadowError):
                 print(
                     "check-unanswered shadow error: state_error_record_failed",
                     file=sys.stderr,

@@ -10,6 +10,13 @@ Provider and state failures remain distinct from semantic labels. A body-free re
 candidates/day, label distribution, provider errors, truncation, tick health, latency, and opaque
 IDs for the later operator-confirmed sample. The fourteen-day clock requires an explicit stamp
 after an independently verified deployed no-effect tick; merge or first execution never starts it.
+Candidate scanning now consumes the persisted cursor in pages of at most 50 and records backlog
+without losing outage recovery. Provider work holds after the proof tick until the window is
+stamped and stops after the fourteen-day population drains; the private ledger also fails closed
+at a fixed size. Window provenance binds the exact deployed revision to its eligible proof tick,
+and completion requires bounded cadence gaps across a frozen expected-group manifest. Operator
+confirmations are keyed to actual `unanswered` opaque IDs, while strict state/event validation
+prevents malformed private fields from crossing the body-free report boundary.
 
 ## 0.1.146 — 2026-09-23
 

@@ -15,6 +15,11 @@ The cadence registry runs `scripts/unanswered-precheck.py` before any agent turn
 scans only historically eligible groups, makes one Jev Choice request per new candidate, and
 appends private shadow records under `/workspace/state/check-unanswered/`.
 
+The scan consumes at most 50 deterministic cursor-ordered candidates per tick. A full page is
+recorded as backlog for the next tick. Before measurement starts, the first eligible tick holds
+all later invocations; after the exact fourteen-day population drains, the terminal lifecycle
+makes no further provider calls.
+
 Its last stdout line is always `{"wake_agent": false, "data": {...}}`. Provider, database,
 configuration, and state errors remain shadow records and never wake the agent.
 
@@ -33,5 +38,6 @@ Finish here.
 The state contract is in `skills/check-unanswered/references/state-schema.md`. After deployment and an
 independently verified live no-effect tick, stamp the measurement window with the precheck's
 `--stamp-window-start` mode. Build the body-free aggregate with
-`scripts/check-unanswered-report.py`; its argument and output contracts are in that script's
-top-level docstring.
+`scripts/check-unanswered-report.py`, supplying the frozen expected-group manifest and optional
+keyed operator-confirmation file; its argument and output contracts are in that script's top-level
+docstring.

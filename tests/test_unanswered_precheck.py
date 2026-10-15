@@ -2,12 +2,13 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 NOW = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
 CHAT = "group@example"
+REVISION = "a" * 40
 
 
 def _database(path, *, is_main=1, container_config=None):
@@ -137,7 +138,12 @@ def test_candidate_predicate_matches_historical_reply_and_reaction_rules(
     _message(database, "grace", "2026-09-23T11:59:30Z")
 
     with module.open_database(database) as connection:
-        candidates = module.find_candidates(connection, CHAT, NOW)
+        candidates = module.find_candidates(
+            connection,
+            CHAT,
+            cursor={"timestamp": "2026-09-22T12:00:00Z", "id": "\uffff"},
+            scan_cutoff=NOW - timedelta(seconds=60),
+        )
 
     assert [row["id"] for row in candidates] == ["plain", "other-reaction"]
 
@@ -297,7 +303,7 @@ def test_restart_dedupes_before_provider_call(unanswered_precheck, tmp_path):
         transport=transport,
     )
     assert first["data"]["classified"] == 1
-    assert second["data"]["deduped"] == 1
+    assert second["data"]["status"] == "awaiting_window_start"
     assert len(calls) == 1
 
 
@@ -386,7 +392,7 @@ def test_window_start_requires_completed_eligible_tick(unanswered_precheck, tmp_
             state_dir=state_dir,
             chat_jid=CHAT,
             start=NOW,
-            source_revision="abc123",
+            source_revision=REVISION,
             now=NOW,
         )
 
@@ -407,18 +413,185 @@ def test_window_start_is_explicit_and_idempotent(unanswered_precheck, tmp_path):
         state_dir=state_dir,
         chat_jid=CHAT,
         start=NOW,
-        source_revision="abc123",
+        source_revision=REVISION,
         now=NOW,
     )
     second = module.stamp_window(
         state_dir=state_dir,
         chat_jid=CHAT,
         start=NOW,
-        source_revision="abc123",
+        source_revision=REVISION,
         now=NOW,
     )
     assert first == second
     assert sum(event["event"] == "window_started" for event in _events(module, state_dir)) == 1
+
+
+def test_window_start_rejects_backdating_future_and_revision_change(unanswered_precheck, tmp_path):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=_provider(module),
+    )
+    for start, now, category in (
+        (NOW - timedelta(seconds=1), NOW, "window_start_not_verified_tick"),
+        (NOW + timedelta(seconds=1), NOW, "window_start_future"),
+    ):
+        with pytest.raises(module.ShadowError, match=category):
+            module.stamp_window(
+                state_dir=state_dir,
+                chat_jid=CHAT,
+                start=start,
+                source_revision=REVISION,
+                now=now,
+            )
+    module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW,
+    )
+    with pytest.raises(module.ShadowError, match="source_revision_mismatch"):
+        module.stamp_window(
+            state_dir=state_dir,
+            chat_jid=CHAT,
+            start=NOW,
+            source_revision="b" * 40,
+            now=NOW,
+        )
+
+
+def test_tick_pages_fifty_candidates_and_recovers_past_lookback(unanswered_precheck, tmp_path):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    for index in range(55):
+        _message(
+            database,
+            f"candidate-{index:02d}",
+            f"2026-09-23T10:{index:02d}:00Z",
+        )
+    calls = []
+
+    def transport(*args):
+        calls.append(args)
+        return _provider(module)(*args)
+
+    first = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=transport,
+    )
+    assert first["data"]["candidates"] == 50
+    assert len(calls) == 50
+    module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW,
+    )
+    recovered = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW + timedelta(days=2),
+        transport=transport,
+    )
+    assert recovered["data"]["candidates"] == 5
+    assert len(calls) == 55
+    assert module.load_state(state_dir, CHAT)["cursor"]["timestamp"] == "2026-09-25T11:59:00Z"
+
+
+def test_pre_window_hold_and_completed_lifecycle_make_no_provider_calls(
+    unanswered_precheck, tmp_path
+):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=_provider(module),
+    )
+    held = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW + timedelta(minutes=30),
+        transport=lambda *_args: pytest.fail("provider called before window start"),
+    )
+    assert held["data"]["status"] == "awaiting_window_start"
+    module.stamp_window(
+        state_dir=state_dir,
+        chat_jid=CHAT,
+        start=NOW,
+        source_revision=REVISION,
+        now=NOW,
+    )
+    completed = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW + timedelta(days=14, minutes=1),
+        transport=lambda *_args: pytest.fail("provider called without a candidate"),
+    )
+    assert completed["data"]["status"] == "shadow_complete"
+    assert module.load_state(state_dir, CHAT)["lifecycle"] == "measurement_complete"
+    stopped = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW + timedelta(days=15),
+        transport=lambda *_args: pytest.fail("provider called after measurement"),
+    )
+    assert stopped["data"]["status"] == "measurement_complete"
+
+
+def test_ledger_capacity_fails_closed_and_stops_provider_work(
+    unanswered_precheck, tmp_path, monkeypatch
+):
+    module = unanswered_precheck
+    database = tmp_path / "messages.db"
+    state_dir = tmp_path / "state"
+    _database(database)
+    _message(database, "candidate", "2026-09-23T10:00:00Z")
+    monkeypatch.setattr(module, "MAX_LEDGER_BYTES", 300)
+    monkeypatch.setattr(module, "LEDGER_CAPACITY_RESERVE_BYTES", 128)
+    with pytest.raises(module.ShadowError, match="state_capacity_exceeded"):
+        module.run_tick(
+            state_dir=state_dir,
+            db_path=database,
+            chat_jid=CHAT,
+            now=NOW,
+            transport=lambda *_args: pytest.fail("provider called after capacity refusal"),
+        )
+    assert (state_dir / "events.jsonl").stat().st_size <= 300
+    assert _events(module, state_dir)[-1]["status"] == "capacity_exhausted"
+    held = module.run_tick(
+        state_dir=state_dir,
+        db_path=database,
+        chat_jid=CHAT,
+        now=NOW,
+        transport=lambda *_args: pytest.fail("provider called after terminal capacity event"),
+    )
+    assert held["data"] == {
+        "status": "measurement_paused",
+        "category": "state_capacity_exceeded",
+    }
 
 
 def test_main_error_is_valid_no_wake_json(unanswered_precheck, tmp_path, monkeypatch, capsys):

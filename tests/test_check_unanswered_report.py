@@ -1,158 +1,242 @@
 """Body-free aggregation for check-unanswered shadow state."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
 
-def _root(path: Path, *, run_id: str, window_start="2026-09-23T12:00:00Z"):
+REVISION = "a" * 40
+RUN_A = "check-unanswered-" + "1" * 20
+RUN_B = "check-unanswered-" + "2" * 20
+OPAQUE_A = "a" * 24
+OPAQUE_B = "b" * 24
+START = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
+
+
+def _utc(value):
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _state(path: Path, *, run_id: str, start=None, lifecycle="initializing"):
     path.mkdir()
     (path / "state.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "run_id": run_id,
-                "window_start_utc": window_start,
+                "group_id": run_id.removeprefix("check-unanswered-"),
+                "model": "jev-1.13.0",
+                "question_version": "unanswered-choice-v1",
+                "cursor": (
+                    None
+                    if lifecycle == "initializing"
+                    else {"timestamp": _utc(START), "id": "\uffff"}
+                ),
+                "deployment_source_revision": REVISION if start is not None else None,
+                "window_start_utc": _utc(start) if start is not None else None,
+                "lifecycle": lifecycle,
             }
         )
     )
     return path
 
 
-def _events(path: Path, rows):
+def _write_events(path: Path, rows):
     (path / "events.jsonl").write_text(
         "".join(json.dumps({"schema_version": 1, **row}) + "\n" for row in rows)
     )
 
 
-def test_report_aggregates_groups_without_private_locators(unanswered_report, tmp_path):
-    first = _root(tmp_path / "first", run_id="run-a")
-    second = _root(tmp_path / "second", run_id="run-b")
-    _events(
-        first,
-        [
-            {
-                "event": "candidate_started",
-                "at_utc": "2026-09-23T12:00:00Z",
-                "candidate_key": "private-key-a",
-                "message_id": "private-message-a",
-                "candidate_timestamp": "2026-09-23T10:00:00Z",
-                "opaque_id": "opaque-a",
-                "count_truncated": True,
-                "bytes_truncated": False,
-            },
-            {
-                "event": "decision",
-                "at_utc": "2026-09-23T12:00:01Z",
-                "candidate_key": "private-key-a",
-                "opaque_id": "opaque-a",
-                "label": "unanswered",
-                "latency_ms": 100,
-                "candidate_bytes_truncated": False,
-            },
-            {"event": "tick", "at_utc": "2026-09-23T12:00:02Z", "eligible": True},
-        ],
-    )
-    _events(
-        second,
-        [
-            {
-                "event": "candidate_started",
-                "at_utc": "2026-09-24T12:00:00Z",
-                "candidate_key": "private-key-b",
-                "message_id": "private-message-b",
-                "candidate_timestamp": "2026-09-24T10:00:00Z",
-                "opaque_id": "opaque-b",
-                "count_truncated": False,
-                "bytes_truncated": True,
-            },
-            {
-                "event": "error",
-                "at_utc": "2026-09-24T12:00:01Z",
-                "candidate_key": "private-key-b",
-                "opaque_id": "opaque-b",
-                "category": "provider_unavailable",
-                "scope": "candidate",
-                "latency_ms": 300,
-            },
-            {"event": "tick", "at_utc": "2026-09-24T12:00:02Z", "eligible": True},
-        ],
-    )
-    report = unanswered_report.build_report([first, second])
-    encoded = json.dumps(report)
-    assert report["eligible_groups"] == ["run-a", "run-b"]
-    assert report["window"]["complete_14_days"] is False
-    assert report["candidates_per_day"] == {"2026-09-23": 1, "2026-09-24": 1}
-    assert report["label_distribution"]["unanswered"] == 1
-    assert report["provider_errors"] == {"provider_unavailable": 1}
-    assert report["truncation"] == {
-        "candidate_bytes": 0,
+def _candidate(opaque=OPAQUE_A):
+    return {
+        "event": "candidate_started",
+        "at_utc": _utc(START),
+        "candidate_key": "private-key-" + opaque,
+        "message_id": "private-message-" + opaque,
+        "candidate_timestamp": "2026-09-23T10:00:00Z",
+        "opaque_id": opaque,
         "following_count": 1,
-        "following_bytes": 1,
+        "following_bytes": 100,
+        "count_truncated": True,
+        "bytes_truncated": False,
     }
-    assert report["latency_ms"] == {"p50": 100, "p95": 300}
-    assert report["unanswered_sample_opaque_ids"] == ["opaque-a"]
+
+
+def _decision(opaque=OPAQUE_A, label="unanswered"):
+    return {
+        "event": "decision",
+        "at_utc": _utc(START + timedelta(seconds=1)),
+        "candidate_key": "private-key-" + opaque,
+        "opaque_id": opaque,
+        "label": label,
+        "probabilities": {
+            "addressed_inline": 0.1,
+            "unanswered": 0.8,
+            "cant_tell": 0.1,
+        },
+        "confidence": 0.8,
+        "latency_ms": 100,
+        "input_tokens": 12,
+        "output_tokens": 3,
+        "candidate_bytes_truncated": False,
+        "model": "jev-1.13.0",
+        "question_version": "unanswered-choice-v1",
+    }
+
+
+def _tick(at, *, lifecycle="active"):
+    return {
+        "event": "tick",
+        "at_utc": _utc(at),
+        "eligible": True,
+        "reason": "main",
+        "candidate_count": 0,
+        "classified_count": 0,
+        "error_count": 0,
+        "deduped_count": 0,
+        "cursor": {"timestamp": _utc(at - timedelta(seconds=60)), "id": "\uffff"},
+        "page_full": False,
+        "scan_cutoff_utc": _utc(at - timedelta(seconds=60)),
+        "lifecycle": lifecycle,
+    }
+
+
+def _window_event():
+    return {
+        "event": "window_started",
+        "at_utc": _utc(START),
+        "window_start_utc": _utc(START),
+        "deployment_source_revision": REVISION,
+        "verified_tick_at_utc": _utc(START),
+    }
+
+
+def _manifest(*run_ids):
+    return {
+        "schema_version": 1,
+        "deployment_source_revision": REVISION,
+        "expected_run_ids": list(run_ids),
+    }
+
+
+def _complete_events(*extra):
+    ticks = [_tick(START + timedelta(hours=hour)) for hour in range(14 * 24 + 1)]
+    ticks[-1]["lifecycle"] = "measurement_complete"
+    return [ticks[0], _window_event(), *extra, *ticks[1:]]
+
+
+def test_report_aggregates_without_private_locators(unanswered_report, tmp_path):
+    first = _state(tmp_path / "first", run_id=RUN_A)
+    second = _state(tmp_path / "second", run_id=RUN_B)
+    _write_events(first, [_candidate(), _decision()])
+    _write_events(second, [_candidate(OPAQUE_B)])
+    report = unanswered_report.build_report(
+        [first, second], expected_manifest=_manifest(RUN_A, RUN_B)
+    )
+    encoded = json.dumps(report)
+    assert report["group_coverage"]["complete_14_days"] is False
+    assert report["candidates_per_day"] == {"2026-09-23": 2}
+    assert report["label_distribution"]["unanswered"] == 1
+    assert report["unresolved_opaque_ids"] == [OPAQUE_B]
+    assert report["unanswered_sample_opaque_ids"] == [OPAQUE_A]
     assert "private-message" not in encoded
     assert "private-key" not in encoded
 
 
-def test_report_marks_interrupted_attempt_unresolved(unanswered_report, tmp_path):
-    root = _root(tmp_path / "state", run_id="run-a")
-    _events(
+def test_sparse_window_stays_pending_and_reports_gap(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A, start=START, lifecycle="measurement_complete")
+    _write_events(
         root,
         [
-            {
-                "event": "candidate_started",
-                "at_utc": "2026-09-23T12:00:00Z",
-                "candidate_key": "private-key",
-                "candidate_timestamp": "2026-09-23T10:00:00Z",
-                "opaque_id": "opaque-a",
-            }
+            _tick(START),
+            _window_event(),
+            _tick(START + timedelta(days=14), lifecycle="measurement_complete"),
         ],
     )
-    report = unanswered_report.build_report([root])
-    assert report["unresolved_opaque_ids"] == ["opaque-a"]
-
-
-def test_report_refuses_unknown_schema(unanswered_report, tmp_path):
-    root = _root(tmp_path / "state", run_id="run-a")
-    (root / "state.json").write_text(json.dumps({"schema_version": 2}))
-    (root / "events.jsonl").write_text("")
-    try:
-        unanswered_report.build_report([root])
-    except unanswered_report.ReportError as exc:
-        assert "unsupported state schema" in str(exc)
-    else:
-        raise AssertionError("unknown schema was accepted")
-
-
-def test_report_applies_go_no_go_only_after_complete_window_and_confirmation(
-    unanswered_report, tmp_path
-):
-    root = _root(tmp_path / "state", run_id="run-a")
-    _events(
-        root,
-        [
-            {
-                "event": "tick",
-                "at_utc": "2026-10-07T12:00:00Z",
-                "eligible": True,
-            }
-        ],
+    report = unanswered_report.build_report(
+        [root],
+        expected_manifest=_manifest(RUN_A),
     )
-    no_go = unanswered_report.build_report([root], confirmed_real_drops=0, sample_size=5)
-    assert no_go["window"]["complete_14_days"] is True
+    coverage = report["group_coverage"]["by_run_id"][RUN_A]
+    assert coverage["gap_count"] == 1
+    assert report["group_coverage"]["complete_14_days"] is False
+    assert report["go_no_go"] == "pending"
+
+
+def test_complete_window_and_keyed_confirmations_drive_go_no_go(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A, start=START, lifecycle="measurement_complete")
+    _write_events(root, _complete_events(_candidate(), _decision()))
+    no_go = unanswered_report.build_report(
+        [root],
+        expected_manifest=_manifest(RUN_A),
+        confirmations=[{"opaque_id": OPAQUE_A, "real_drop": False}],
+    )
+    assert no_go["group_coverage"]["complete_14_days"] is True
+    assert no_go["operator_confirmation"]["sample_size"] == 1
     assert no_go["go_no_go"] == "no_go_keep_retired"
-    go = unanswered_report.build_report([root], confirmed_real_drops=1, sample_size=5)
+    go = unanswered_report.build_report(
+        [root],
+        expected_manifest=_manifest(RUN_A),
+        confirmations=[{"opaque_id": OPAQUE_A, "real_drop": True}],
+    )
     assert go["go_no_go"] == "go_follow_up_only"
 
 
-def test_report_refuses_partial_or_impossible_confirmation(unanswered_report, tmp_path):
-    root = _root(tmp_path / "state", run_id="run-a")
-    _events(root, [])
-    for drops, sample in ((1, None), (None, 1), (-1, 1), (2, 1), (0, 0)):
-        try:
-            unanswered_report.build_report([root], confirmed_real_drops=drops, sample_size=sample)
-        except unanswered_report.ReportError:
-            pass
-        else:
-            raise AssertionError((drops, sample))
+def test_confirmation_must_name_unique_unanswered_decision(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A, start=START, lifecycle="measurement_complete")
+    _write_events(root, _complete_events(_candidate(), _decision()))
+    with pytest.raises(unanswered_report.ReportError, match="does not match"):
+        unanswered_report.build_report(
+            [root],
+            expected_manifest=_manifest(RUN_A),
+            confirmations=[{"opaque_id": OPAQUE_B, "real_drop": False}],
+        )
+    with pytest.raises(unanswered_report.ReportError, match="operator confirmations"):
+        unanswered_report.build_report(
+            [root],
+            expected_manifest=_manifest(RUN_A),
+            confirmations=[
+                {"opaque_id": OPAQUE_A, "real_drop": False},
+                {"opaque_id": OPAQUE_A, "real_drop": False},
+            ],
+        )
+
+
+def test_expected_group_manifest_exposes_omission(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A)
+    _write_events(root, [])
+    report = unanswered_report.build_report([root], expected_manifest=_manifest(RUN_A, RUN_B))
+    assert report["group_coverage"]["missing_run_ids"] == [RUN_B]
+    assert report["group_coverage"]["all_groups_started"] is False
+    assert report["go_no_go"] == "pending"
+
+
+def test_duplicate_run_id_is_refused(unanswered_report, tmp_path):
+    first = _state(tmp_path / "first", run_id=RUN_A)
+    second = _state(tmp_path / "second", run_id=RUN_A)
+    _write_events(first, [])
+    _write_events(second, [])
+    with pytest.raises(unanswered_report.ReportError, match="duplicate run ID"):
+        unanswered_report.build_report([first, second], expected_manifest=_manifest(RUN_A))
+
+
+def test_strict_validation_does_not_reflect_private_canary(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A)
+    state = json.loads((root / "state.json").read_text())
+    state["PRIVATE-CANARY"] = "PRIVATE-CANARY"
+    (root / "state.json").write_text(json.dumps(state))
+    _write_events(root, [])
+    with pytest.raises(unanswered_report.ReportError) as caught:
+        unanswered_report.build_report([root], expected_manifest=_manifest(RUN_A))
+    assert "PRIVATE-CANARY" not in str(caught.value)
+
+
+def test_report_refuses_unknown_schema(unanswered_report, tmp_path):
+    root = _state(tmp_path / "state", run_id=RUN_A)
+    state = json.loads((root / "state.json").read_text())
+    state["schema_version"] = 2
+    (root / "state.json").write_text(json.dumps(state))
+    _write_events(root, [])
+    with pytest.raises(unanswered_report.ReportError, match="invalid shadow state"):
+        unanswered_report.build_report([root], expected_manifest=_manifest(RUN_A))

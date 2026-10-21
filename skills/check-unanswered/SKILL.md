@@ -39,5 +39,5 @@ The state contract is in `skills/check-unanswered/references/state-schema.md`. A
 independently verified live no-effect tick, stamp the measurement window with the precheck's
 `--stamp-window-start` mode. Build the body-free aggregate with
 `scripts/check-unanswered-report.py`, supplying the frozen expected-group manifest and optional
-keyed operator-confirmation file; its argument and output contracts are in that script's top-level
-docstring.
+keyed operator-confirmation census; its argument and output contracts are in that script's
+top-level docstring.

@@ -18,6 +18,12 @@ and completion requires bounded cadence gaps across a frozen expected-group mani
 confirmations are keyed to actual `unanswered` opaque IDs, while strict state/event validation
 prevents malformed private fields from crossing the body-free report boundary.
 
+The decision population is now limited to candidate timestamps inside each exact half-open
+fourteen-day window. Candidate errors, interrupted attempts, and incomplete operator review keep
+the decision pending. Confirmations cover the complete `unanswered` population and produce the
+explicit real dropped-message rate, so a proof-tick backlog or hand-picked negative subset cannot
+yield an unsound no-go.
+
 ## 0.1.153 — 2026-10-20
 
 ### default-silence — a Jev-passed message is the agent's call (#116)

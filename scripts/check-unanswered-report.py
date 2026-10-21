@@ -5,9 +5,10 @@ Usage: ``python3 scripts/check-unanswered-report.py --expected-groups MANIFEST
 STATE_DIR [STATE_DIR ...] [--confirmations FILE]``.
 
 The manifest freezes the expected body-free run IDs and deployed source revision.
-The optional confirmations file contains operator judgments keyed by opaque IDs.
-Success emits one strictly validated, body-free JSON report. Exit 1 emits only a
-fixed diagnostic identifying the input class and never reflects private values.
+The optional confirmations file contains the operator census keyed by unanswered
+opaque IDs. Success emits one strictly validated, body-free JSON report. Exit 1
+emits only a fixed diagnostic identifying the input class and never reflects
+private values.
 """
 
 from __future__ import annotations
@@ -498,6 +499,7 @@ def build_report(
     extra = sorted(observed - expected)
 
     all_events: list[dict[str, Any]] = []
+    window_bounds: dict[str, tuple[datetime, datetime] | None] = {}
     coverage: dict[str, dict[str, Any]] = {}
     capacity_exhausted = False
     for state, events in loaded:
@@ -521,6 +523,7 @@ def build_report(
                 "population_drained": False,
                 "complete": False,
             }
+            window_bounds[run_id] = None
             all_events.extend(events)
             continue
         if len(window_events) != 1:
@@ -535,6 +538,7 @@ def build_report(
             _fail("window provenance")
         start = parse_utc(start_text, "window provenance")
         required_end = start + timedelta(days=MEASUREMENT_DAYS)
+        window_bounds[run_id] = (start, required_end)
         scoped = [event for event in events if parse_utc(event["at_utc"]) >= start]
         tick_times = sorted(
             parse_utc(event["at_utc"])
@@ -570,21 +574,37 @@ def build_report(
         }
         all_events.extend(scoped)
 
-    starts: dict[str, dict[str, Any]] = {}
-    terminals: dict[str, dict[str, Any]] = {}
-    for event in all_events:
-        key = event.get("candidate_key")
-        if event["event"] == "candidate_started":
-            if key in starts:
+    starts: dict[tuple[str, str], dict[str, Any]] = {}
+    terminals: dict[tuple[str, str], dict[str, Any]] = {}
+    for state, events in loaded:
+        run_id = state["run_id"]
+        local_starts: dict[str, dict[str, Any]] = {}
+        local_terminals: dict[str, dict[str, Any]] = {}
+        for event in events:
+            key = event.get("candidate_key")
+            if event["event"] == "candidate_started":
+                if key in local_starts:
+                    _fail("candidate relationships")
+                local_starts[str(key)] = event
+            elif event["event"] in {"decision", "error"} and event.get("scope") != "tick":
+                if key in local_terminals:
+                    _fail("candidate relationships")
+                local_terminals[str(key)] = event
+        for key, terminal in local_terminals.items():
+            if key not in local_starts or local_starts[key]["opaque_id"] != terminal["opaque_id"]:
                 _fail("candidate relationships")
-            starts[str(key)] = event
-        elif event["event"] in {"decision", "error"} and event.get("scope") != "tick":
-            if key in terminals:
-                _fail("candidate relationships")
-            terminals[str(key)] = event
-    for key, terminal in terminals.items():
-        if key not in starts or starts[key]["opaque_id"] != terminal["opaque_id"]:
-            _fail("candidate relationships")
+        bounds = window_bounds[run_id]
+        if bounds is None:
+            continue
+        start, required_end = bounds
+        for key, event in local_starts.items():
+            candidate_at = parse_utc(event["candidate_timestamp"], "candidate event")
+            if not start <= candidate_at < required_end:
+                continue
+            owned_key = (run_id, key)
+            starts[owned_key] = event
+            if key in local_terminals:
+                terminals[owned_key] = local_terminals[key]
     opaque_ids = [event["opaque_id"] for event in starts.values()]
     if len(set(opaque_ids)) != len(opaque_ids):
         _fail("candidate relationships")
@@ -595,11 +615,23 @@ def build_report(
         event for event in all_events if event["event"] == "error" and event["scope"] == "tick"
     ]
     ticks = [event for event in all_events if event["event"] == "tick"]
-    per_day = Counter(event["candidate_timestamp"][:10] for event in starts.values())
+    per_day = Counter(
+        parse_utc(event["candidate_timestamp"], "candidate event").date().isoformat()
+        for event in starts.values()
+    )
     labels = Counter(event["label"] for event in decisions)
     error_categories = Counter(event["category"] for event in candidate_errors)
     tick_error_categories = Counter(event["category"] for event in tick_errors)
     unresolved = sorted(event["opaque_id"] for key, event in starts.items() if key not in terminals)
+    incomplete_run_ids = {
+        run_id
+        for run_id, key in starts
+        if (run_id, key) not in terminals
+        or terminals.get((run_id, key), {}).get("event") == "error"
+    }
+    for run_id in incomplete_run_ids:
+        coverage[run_id]["complete"] = False
+    candidate_population_complete = not candidate_errors and not unresolved
     unanswered_ids = sorted(
         event["opaque_id"] for event in decisions if event["label"] == "unanswered"
     )
@@ -611,10 +643,16 @@ def build_report(
         confirmed_real_drops = sum(row["real_drop"] for row in confirmations)
         sample_size = len(confirmations)
         reviewed_ids = sorted(confirmation_ids)
+        confirmation_complete = confirmation_ids == unanswered_set
+        real_dropped_message_rate = (
+            confirmed_real_drops / sample_size if confirmation_complete else None
+        )
     else:
         confirmed_real_drops = None
         sample_size = None
         reviewed_ids = []
+        confirmation_complete = False
+        real_dropped_message_rate = None
     latencies = [event["latency_ms"] for event in decisions + candidate_errors]
     all_groups_complete = (
         not capacity_exhausted
@@ -622,8 +660,9 @@ def build_report(
         and not extra
         and len(coverage) == len(expected)
         and all(item["complete"] for item in coverage.values())
+        and candidate_population_complete
     )
-    if not all_groups_complete or confirmations is None:
+    if not all_groups_complete or not confirmation_complete:
         go_no_go = "pending"
     elif confirmed_real_drops == 0:
         go_no_go = "no_go_keep_retired"
@@ -648,6 +687,7 @@ def build_report(
             "ineligible": sum(event["eligible"] is False for event in ticks),
             "capacity_exhausted": capacity_exhausted,
         },
+        "candidate_population_complete": candidate_population_complete,
         "candidates_per_day": dict(sorted(per_day.items())),
         "label_distribution": {label: labels.get(label, 0) for label in LABELS},
         "provider_errors": dict(sorted(error_categories.items())),
@@ -667,6 +707,8 @@ def build_report(
             "reviewed_opaque_ids": reviewed_ids,
             "confirmed_real_drops": confirmed_real_drops,
             "sample_size": sample_size,
+            "confirmation_complete": confirmation_complete,
+            "real_dropped_message_rate": real_dropped_message_rate,
         },
         "go_no_go": go_no_go,
     }

@@ -62,11 +62,18 @@ The fourteen-day clock starts only from an explicit `window_started` event writt
 deployed revision, cadence row, and live no-effect tick have been independently verified.
 The body-free report requires a frozen expected-group manifest and validates every state/event
 field against this schema. It reports missing and extra run IDs, requires eligible tick gaps no
-larger than one hour, and accepts operator confirmations only as unique opaque IDs that resolve
-to actual `unanswered` decisions in the active window.
+larger than one hour, and defines each group's decision population by candidate timestamp in the
+half-open `[window_start_utc, window_start_utc + 14 days)` interval. Proof-tick backlog before the
+start and candidates exactly at the end are excluded. Candidate terminals must resolve inside the
+same group state root; any in-window candidate error or unresolved start keeps the report pending.
+
+Operator review is a census of every `unanswered` opaque ID in that exact population. A partial
+census remains pending, an ID outside the population is refused, and a complete census reports
+`real_dropped_message_rate` as confirmed real drops divided by the census size.
 
 The expected-group manifest is an exact object with `schema_version`, the 40-hex
 `deployment_source_revision`, and a unique nonempty `expected_run_ids` list containing the
 `check-unanswered-<20 hex>` IDs from deployment/registration evidence. The optional confirmation
 file is an exact object with `schema_version` and a nonempty `confirmations` list. Each confirmation
-has only a unique 24-hex `opaque_id` and boolean `real_drop`; counts are derived, never supplied.
+has only a unique 24-hex `opaque_id` and boolean `real_drop`; counts and the rate are derived, never
+supplied.

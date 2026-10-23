@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.155 — 2026-10-23
+
 ### Remove agent progress messages; preserve answers after mid-turn sends (#119)
 
 The host suppresses final text after a successful message or file send. The progress-update rule could trigger that suppression before the actual answer. Remove the rule and its manifest/README entries. Core behavior forbids agent progress messages in every tier and requires subsequent answers through `send_message` after a mid-turn send. Owner-only host previews remain tracked in jbaruch/nanoclaw#1099.

@@ -19,7 +19,6 @@
     "rules/context-recovery.md",
     "rules/post-compaction-trust.md",
     "rules/tone-matching.md",
-    "rules/query-size-limits.md",
-    "rules/progress-updates.md"
+    "rules/query-size-limits.md"
   ]
 }

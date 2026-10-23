@@ -26,7 +26,7 @@ Direct conversational answers are fine as plain text.
 
 ## Communication
 
-Your output is sent to the user or group. You also have `mcp__nanoclaw__send_message` for immediate delivery while still working.
+Your output is sent to the user or group. You also have `mcp__nanoclaw__send_message` for immediate delivery while still working. Do not send agent-written progress updates in any tier. After any successful `send_message` or `send_file` in a turn, deliver every further user-facing answer through `send_message` and leave final text empty or inside `<internal>` tags.
 
 ### Internal thoughts
 

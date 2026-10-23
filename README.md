@@ -25,7 +25,6 @@ tessl install jbaruch/nanoclaw-core
 | [post-compaction-trust](rules/post-compaction-trust.md) | always-on | Compaction summaries are trusted state; do not re-derive what's already there |
 | [tone-matching](rules/tone-matching.md) | always-on | Mirror the user's register; tone shifts signal mode shifts |
 | [query-size-limits](rules/query-size-limits.md) | always-on | Bounded SQL/API queries; never SELECT * on large tables |
-| [progress-updates](rules/progress-updates.md) | conditional | Brief updates at key moments; silence is not a failure |
 
 ## Skills
 
@@ -37,7 +36,7 @@ tessl install jbaruch/nanoclaw-core
 
 ## Philosophy
 
-- **Always on by default.** 11 of the 12 rules are `alwaysApply: true` — the agent follows them without being prompted. `progress-updates` is conditional (`alwaysApply: false` + `applyTo:`), firing only when long-running background work is in play.
+- **Always on by default.** All 11 rules are `alwaysApply: true` — the agent follows them without being prompted.
 - **One concern per rule.** Each file covers one topic so projects can override surgically without throwing out the whole plugin.
 - **Behavior, not domain.** These are conversational and verification baselines — anything domain-specific (CFPs, calendar, email) lives in `nanoclaw-admin`.
 - **Hint, not authority for state.** Cached state is a recall hint; verify against the live source before acting on it (see `ground-truth`).

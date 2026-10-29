@@ -57,6 +57,18 @@ result grants no timezone-write, scheduling, model, owner or delivery authority.
 The target's docstring owns exit/diagnostic details; a failed read never grants a
 usable zone. This contract grants no exception to checks after lookup.
 
+The runtime owner is `jbaruch/nanoclaw`: `src/db-tz.ts` writes the singleton at
+`/workspace/store/messages.db`, and
+`src/state-migrations/state-010-tz-state.schema.md` is its schema contract.
+The authoritative owner migrations are `state-010-tz-state.ts`,
+`state-012-tz-state-segments.ts`, `state-013-tz-state-segments-datetime.ts` and
+`state-015-tz-state-stale-warning.ts` in that same migrations directory. This
+reader selects only `current_tz,schema_version` at `id=1` and accepts exactly
+record version4: a nonblank valid IANA `current_tz` is usable; a missing row,
+unsupported version or invalid zone is unavailable. This is the record version,
+not the database migration number. The host alone migrates; the reader never
+rewrites or upgrades a row.
+
 `tests/test_current_tz_contract.py` verifies the declared provider/skill/rule and
 native target lookup plus actual read-only output. `tests/test_read_current_tz.py`
 covers supported/unsupported state, missing/corrupt stores, unavailable outcomes,

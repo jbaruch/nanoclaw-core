@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.157 — 2026-10-29
+
 ### Declare the current-zone reader contract for script consumers
 
 Extend the existing temporal-awareness authority with the co-shipped current-tz target, production input, output and regression contract needed by the waiting-on-owner consumer (nanoclaw-admin#625). Keep the reader, its readonly state access, manifest, clock behavior and existing runtime rules unchanged. Lookup grants no new runtime authority or fallback permission.

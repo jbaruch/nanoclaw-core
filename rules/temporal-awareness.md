@@ -36,3 +36,42 @@ If clearly no — don't. If uncertain — think about what a useful message woul
 - Framing events as past/present/future ("upcoming", "just happened", "still time to act")
 
 LLMs default to treating all information as equally present-tense. Explicitly compensate: check the clock, check the context, then act.
+
+
+## Scoped current-zone script contract
+
+This named provider rule covers direct scripted reads of the operator's current
+zone through this plugin's co-shipped `skills/current-tz/scripts/read-current-tz.py`.
+The native lookup is
+`/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py`; use that
+regular target from the expected `jbaruch/nanoclaw-core` provider, not a copied
+reader, caller-selected path or handwritten SQL. Production invocation has no
+arguments or input payload. The script's `--now` fixture seam is not permission
+to substitute a clock in an operational run.
+
+Stdout is one JSON object with `available`, `tz`, `local_now` and `local_date`.
+A usable result has `available:true`, an IANA `tz` and its local instant/date;
+an unavailable result has `available:false` and null projection fields. Consumers
+retain unavailable/error handling required by their own workflow; parsing a
+result grants no timezone-write, scheduling, model, owner or delivery authority.
+The target's docstring owns exit/diagnostic details; a failed read never grants a
+usable zone. This contract grants no exception to checks after lookup.
+
+The runtime owner is `jbaruch/nanoclaw`: `src/db-tz.ts` writes the singleton at
+`/workspace/store/messages.db`, and
+`src/state-migrations/state-010-tz-state.schema.md` is its schema contract.
+The authoritative owner migrations are `state-010-tz-state.ts`,
+`state-012-tz-state-segments.ts`, `state-013-tz-state-segments-datetime.ts` and
+`state-015-tz-state-stale-warning.ts` in that same migrations directory. This
+reader selects only `current_tz,schema_version` at `id=1` and accepts exactly
+record version4: a nonblank valid IANA `current_tz` is usable; a missing row,
+unsupported version or invalid zone is unavailable. This is the record version,
+not the database migration number. The host alone migrates; the reader never
+rewrites or upgrades a row.
+
+`tests/test_current_tz_contract.py` verifies the declared provider/skill/rule and
+native target lookup plus actual read-only output. `tests/test_read_current_tz.py`
+covers supported/unsupported state, missing/corrupt stores, unavailable outcomes,
+fixed-clock projections and CLI misuse. Source-authoring verification binds the
+trusted base manifest to this repository and reads this declared regular rule;
+it does not claim an unmerged contract is installed.

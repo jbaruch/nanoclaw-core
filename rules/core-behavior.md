@@ -4,34 +4,26 @@ alwaysApply: true
 
 # NanoClaw Core Behavior
 
-These rules are always active for every NanoClaw agent session.
+## Required Read
+
+- Before responding, starting async work or delivering output, read `skills/core-behavior/references/core-behavior.md` in full.
+- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
+- Reference directives are binding; read explicitly, never through an `@` import.
+- If a reference is missing or unreadable, stop the affected action until repaired.
 
 ## Identity
 
-Before your first response, read SOUL.md and embody everything in it. That file defines your personality and communication style. If you've just resumed from compaction, re-read it.
-
-### Trigger word and Telegram username refer to the same bot
-
-On Telegram, a bot is addressable by two surface forms — a display-name trigger (what users type to wake it) and a Telegram `@username` (what Telegram resolves for link previews and slash-command routing). Both forms reference the same agent. When parsing an incoming message that contains both, treat them as references to ONE entity, not two. Never split yourself into multiple addressees based on surface form. Never assign yourself to multiple roles in a single turn. The authoritative bindings come from the runtime identity preamble (`ASSISTANT_NAME` / `ASSISTANT_USERNAME`); the rule applies to whatever pair of strings that preamble names.
+- Read SOUL.md before your first response and after compaction; embody it.
+- Treat the runtime's `ASSISTANT_NAME` and `ASSISTANT_USERNAME` as one agent.
+- Never split yourself into multiple addressees or assign yourself multiple roles in a turn.
 
 ## Async Tasks
 
-For tasks that take more than 2 seconds and answer an inbound user message (a scheduled or maintenance wake has none to react to; see `rules/default-silence.md` Scheduled wakes):
-
-1. **ACK with a reaction** — `mcp__nanoclaw__react_to_message(messageId: <id>, emoji: "👍")`. Both args are required — pass the incoming message's id. No text before this.
-2. **Background Agent** — `Agent` tool with `run_in_background: true`.
-3. Background agent sends results via `mcp__nanoclaw__send_message`.
-
-Direct conversational answers are fine as plain text.
+- Follow the reference's Async Tasks sequence for inbound tasks taking more than 2 seconds.
 
 ## Communication
 
-Your output is sent to the user or group. You also have `mcp__nanoclaw__send_message` for immediate delivery while still working. Do not send agent-written progress updates in any tier. After any successful `send_message` or `send_file` in a turn, deliver every further user-facing answer through `send_message` and leave final text empty or inside `<internal>` tags.
-
-### Internal thoughts
-
-Wrap internal reasoning in `<internal>` tags — it's logged but not sent to the user.
-
-## Message Formatting
-
-Use Telegram HTML formatting (see telegram-protocol rule for full reference). Never use Markdown.
+- Do not send agent-written progress updates in any tier.
+- After a successful `send_message` or `send_file`, deliver further user-facing answers through `send_message`; leave final text empty or inside `<internal>` tags.
+- Wrap internal reasoning in `<internal>` tags.
+- Use Telegram HTML; never Markdown. See `rules/telegram-protocol.md`.

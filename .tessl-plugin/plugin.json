@@ -4,6 +4,7 @@
   "description": "Core behavioral rules and skills for NanoClaw personal assistant agents. Always-on rules for communication, verification, memory, and formatting.",
   "private": false,
   "skills": [
+    "skills/core-behavior",
     "skills/query-history",
     "skills/now-vs-deadline",
     "skills/current-tz"

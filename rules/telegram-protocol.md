@@ -4,20 +4,30 @@ alwaysApply: true
 
 # Telegram Communication Protocol
 
+## Required Read
+
+- Before Telegram reactions or messages, read `skills/core-behavior/references/telegram-protocol.md` in full, including before relying on a threading carve-out.
+- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
+- Reference directives are binding; read explicitly, never through an `@` import.
+- If a reference is missing or unreadable, stop the affected action until repaired.
+
 ## Acknowledgement
 
-The runtime reacts on first touch (👀) to a message addressed to you via the `react-first` UserPromptSubmit hook in the agent-runner (see `jbaruch/nanoclaw#136`; addressed-only as of `jbaruch/nanoclaw#289`) — you do NOT need to call `react_to_message` to acknowledge receipt. A message Jev passed without addressing you gets no runtime reaction (see `rules/default-silence.md`): when you answer it, the first reaction is yours, the 👍 `rules/core-behavior.md` Async Tasks requires for a long task; when you stay silent, add none. On an addressed message, use `react_to_message` only to upgrade with a more specific reaction *after* inspecting the message: `👌` (got it, working), `👍` (acknowledged/done), `🔥` (urgent), `🤔` (thinking/investigating), `🤝` (done/confirmed). Each `react_to_message` call replaces the prior emoji; a later, more specific one supersedes the runtime's 👀. Telegram allows only its fixed reaction-emoji set and silently falls back to 👍 for any unsupported emoji, so the five above are safe and any other guess is harmless.
+- Runtime 👀 acknowledges addressed messages; do not duplicate it.
+- Upgrade reactions only after inspecting the message, under the reference's Acknowledgement contract.
+- Jev-passed unaddressed messages get no runtime reaction; follow `rules/core-behavior.md` Async Tasks when answering a long task, and add none when silent.
+- React, work, deliver; never send an "I'm starting now" reply.
 
-## Reply threading
+## Threading
 
-The `reply-threading-enforcement` PreToolUse hook (`jbaruch/nanoclaw#137`) denies a standalone `send_message` while the latest user inbound is unanswered — threading is a runtime contract, not a convention. Pass `reply_to` with the message ID from the `<message id="...">` tag for any response to a user message. Carve-outs that bypass the gate: `pin: true` (status updates / daily briefings), `sender` set (multi-bot persona), maintenance / scheduled-task session. Rule of thumb: user said something and you're answering → `reply_to`; nobody asked and you're telling → standalone (e.g. scheduled-task output).
-
-## Async pattern
-
-React → work → deliver result. The reaction (auto-emitted by the runtime) IS the acknowledgement — never hold the user hostage with a "I'm starting now" reply.
+- Pass `reply_to` from the inbound `<message id="...">` tag when answering a user message.
+- Narrow exception for the reference's Reply threading carve-outs.
+- Applies to `pin: true`, `sender` set, or maintenance / scheduled-task sessions.
+- Preconditions are binding: read `skills/core-behavior/references/telegram-protocol.md` Reply threading before relying on it.
+- Every other answer to a user message requires `reply_to`.
 
 ## Formatting
 
-Telegram parses HTML (its own subset, including `<tg-spoiler>`), not Markdown. The `no-markdown-in-send-message` PreToolUse hook (`jbaruch/nanoclaw#138`) auto-rewrites the four common Markdown leaks (`**bold**` → `<b>`, `[label](url)` → `<a href>`, `` `code` `` → `<code>`, `- ` / `* ` line bullets → `•`), so emit raw HTML only for the formats the hook doesn't cover: `<i>`, `<u>`, `<s>`, `<pre>` (optional `<code class="language-python">` for syntax highlighting — substitute the actual language, not a placeholder), `<blockquote>`, `<tg-spoiler>`. For bullets use `•`.
-
-Special-character escaping in user data: only `<`, `>`, `&` need HTML entities (`&lt;`, `&gt;`, `&amp;`). Apostrophes and double quotes pass through raw — do NOT escape them as `&apos;` / `&quot;`; Telegram's HTML parse mode doesn't decode those, so users see the literal entity text in the rendered message. Reference incident: 2026-04-26 untrusted group msg 1116 where `Owner&apos;s Office` and `someone&apos;s tracing` rendered verbatim.
+- Use Telegram HTML and `•` bullets.
+- Follow the reference's Formatting contract for supported tags and hook rewrites.
+- Escape only `<`, `>` and `&` in user data; never escape apostrophes or double quotes as `&apos;` / `&quot;`.

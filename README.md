@@ -30,9 +30,12 @@ tessl install jbaruch/nanoclaw-core
 
 | Skill | Description |
 |-------|-------------|
+| [core-behavior](skills/core-behavior/SKILL.md) | Read binding session, silence, Telegram and verification references when their core rules trigger |
 | [query-history](skills/query-history/SKILL.md) | Search `messages.db` by keyword and/or sender; companion to `context-recovery` |
 | [now-vs-deadline](skills/now-vs-deadline/SKILL.md) | Deterministically compare a deadline against the current instant; mandated path for `temporal-awareness` |
 | [current-tz](skills/current-tz/SKILL.md) | Read the operator's current IANA zone from `tz_state`, resolved by the host from live location; the single shared reader, no home-zone guessing |
+
+Core rules stay within 2,000 bytes each. Their binding read instructions resolve detail within the installed plugin; skill references retain the full contracts.
 
 ## Philosophy
 

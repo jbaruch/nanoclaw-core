@@ -9,7 +9,17 @@ Process steps in order. Do not skip ahead.
 
 This skill is the single shared reader for the operator's current zone. Call it; do not copy `skills/current-tz/scripts/read-current-tz.py` into another plugin.
 
-## Step 1 — Read the operator's current zone
+## Step 1 — Read the Binding Reference
+
+Read the full reference within this installed `jbaruch/nanoclaw-core` plugin:
+
+```text
+skills/current-tz/references/temporal-awareness.md
+```
+
+Follow its complete directives. Read explicitly, never through an `@` import. If missing or unreadable, stop until repaired. Proceed immediately to Step 2.
+
+## Step 2 — Read the operator's current zone
 
 ```bash
 python3 /home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py
@@ -20,9 +30,9 @@ Stdout is one line of JSON:
 - `{"available": true, "tz": "<iana>", "local_now": "<ISO-8601 with offset>", "local_date": "YYYY-MM-DD"}` — the zone the host resolved for the operator's current position, with the current instant already expressed in it
 - `{"available": false, "tz": null, "local_now": null, "local_date": null}` — no usable zone: no `tz_state` row, an empty `current_tz`, a `schema_version` this reader does not accept, or an unparseable zone name. The diagnostic is on stderr.
 
-Exit codes: `0` — the store was read and `available` is the answer. `1` — the store could not be read (missing file, no `tz_state` table, corruption, permission); stdout still carries the unavailable shape. `2` — CLI misuse. `--now <ISO-8601 instant with offset>` pins the instant the local fields derive from; omit it in production. The script never guesses: `home_tz` is not a fallback. Proceed immediately to Step 2.
+Exit codes: `0` — the store was read and `available` is the answer. `1` — the store could not be read (missing file, no `tz_state` table, corruption, permission); stdout still carries the unavailable shape. `2` — CLI misuse. `--now <ISO-8601 instant with offset>` pins the instant the local fields derive from; omit it in production. The script never guesses: `home_tz` is not a fallback. Proceed immediately to Step 3.
 
-## Step 2 — Act on the result
+## Step 3 — Act on the result
 
 - `available: true` → use `local_now` and `local_date` as the operator's wall clock and date.
 - `available: true` → pass `tz` to any script that converts another instant.

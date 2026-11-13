@@ -22,7 +22,7 @@ alwaysApply: true
 
 ## Relevance
 
-- Main-chat messages require a response.
+- Every main-chat message routes to you and is for you.
 - Direct address requires a response: reply to you, @-mention, name as a word, trigger pattern or private 1:1.
 - Read relevance from the message, not a prompt gate verdict.
 - With Jev available, other non-main-chat messages passed its relevance gate.

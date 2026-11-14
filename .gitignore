@@ -55,3 +55,11 @@ Thumbs.db
 .vscode/mcp.json
 .vscode/skills/tessl__*
 # === end Tessl-generated artifacts ===
+
+# Tessl-generated ignore files are local installer state.
+.claude/skills/.gitignore
+.codex/skills/.gitignore
+.cursor/rules/.gitignore
+.cursor/skills/.gitignore
+.github/skills/.gitignore
+.vscode/skills/.gitignore

@@ -7,7 +7,7 @@ claim lost context. Replaces the inlined Python snippet that lived in
 the rule body — extraction tracked in jbaruch/nanoclaw-admin#181 (umbrella
 RULES.md diet jbaruch/nanoclaw-admin#180).
 
-Per `.github/copilot-instructions.md`, the on-tier invocation path is
+Per `skills/query-history/SKILL.md` Step 2, the on-tier invocation path is
 `/home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py`.
 
 Usage:

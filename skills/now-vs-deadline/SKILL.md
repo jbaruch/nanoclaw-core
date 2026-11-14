@@ -9,7 +9,17 @@ Process steps in order. Do not skip ahead.
 
 Compares a deadline against the actual current instant and returns past/future plus the delta in integer seconds. Use it whenever you would otherwise assert that a deadline has elapsed or that there is still time to act — `rules/temporal-awareness.md` requires the comparison to be computed here, not inferred.
 
-## Step 1 — Resolve the deadline to a timezone-aware instant
+## Step 1 — Read the Binding Reference
+
+Read the full reference from the installed `jbaruch/nanoclaw-core` provider:
+
+```text
+/home/node/.claude/skills/tessl__current-tz/references/temporal-awareness.md
+```
+
+Follow its complete directives. Read explicitly, never through an `@` import. If missing or unreadable, stop until repaired. Proceed immediately to Step 2.
+
+## Step 2 — Resolve the deadline to a timezone-aware instant
 
 Do the offset conversion first (e.g. `11:00 EDT` -> `2026-06-12T15:00:00Z`, or pass `2026-06-12T11:00:00-04:00`). The deadline **must** carry a timezone offset (`Z` or `+HH:MM`); a naive value is rejected at exit 2.
 
@@ -17,9 +27,9 @@ Do the offset conversion first (e.g. `11:00 EDT` -> `2026-06-12T15:00:00Z`, or p
 python3 /home/node/.claude/skills/tessl__now-vs-deadline/scripts/now-vs-deadline.py --deadline "2026-06-12T15:00:00Z"
 ```
 
-The comparison is **location-agnostic** — it compares instants only; the result is independent of the offset you used. No physical location or `current_tz` lookup happens here. Mapping relative phrasings (`today`/`now`/`сейчас`/`here`) into a local frame stays in the trusted plugin. Proceed immediately to Step 2.
+The comparison is **location-agnostic** — it compares instants only; the result is independent of the offset you used. No physical location or `current_tz` lookup happens here. Mapping relative phrasings (`today`/`now`/`сейчас`/`here`) into a local frame stays in the trusted plugin. Proceed immediately to Step 3.
 
-## Step 2 — Use the JSON result; do not override it
+## Step 3 — Use the JSON result; do not override it
 
 The script prints a single-line JSON payload to stdout:
 

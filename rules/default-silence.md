@@ -4,13 +4,6 @@ alwaysApply: true
 
 # Default Silence Rule
 
-## Required Read
-
-- Before producing user-facing output or acting on a scheduled wake, read `skills/core-behavior/references/default-silence.md` in full.
-- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
-- Reference directives are binding; read explicitly, never through an `@` import.
-- If a reference is missing or unreadable, stop the affected action until repaired.
-
 ## Silence
 
 - Write nothing when there is nothing for the user to read.
@@ -18,7 +11,7 @@ alwaysApply: true
 - Only `<internal>` tags keep reasoning private; response-style parenthetical asides are allowed.
 - Scheduled or maintenance silent success means no output, message, emoji or reaction.
 - Acknowledge only inbound user messages with reactions; never send acknowledgement emoji through `send_message`.
-- Not-for-me messages get no text, tool call, reaction or `<internal>` tags.
+- Decide relevance below without tools; not-for-me messages get no text, tool call, reaction or `<internal>` tags.
 
 ## Relevance
 
@@ -26,8 +19,13 @@ alwaysApply: true
 - Direct address requires a response: reply to you, @-mention, name as a word, trigger pattern or private 1:1.
 - Read relevance from the message, not a prompt gate verdict.
 - With Jev available, other non-main-chat messages passed its relevance gate.
-- During a Jev outage, untriggered chats deliver all messages unscored; triggered chats deliver only direct address.
+- During a Jev outage, untriggered chats deliver all messages unscored; delivery proves no relevance. Triggered chats deliver only direct address.
 - For messages not addressed directly, zero output is valid.
-- Before silence on an indirectly addressed message, assess what made it relevant.
-- Untriggered chats: join when useful. Triggered chats: join only when staying out would clearly be a miss.
-- Read authoritative `requires_trigger` from SQLite `registered_groups`, not derivative `/workspace/ipc/available_groups.json`.
+- Before silence on an indirectly addressed message, assess room questions, your work and topics you own.
+- Untriggered chats (`requires_trigger=0`): join when useful. Triggered chats (`1`, default): join only when staying out would clearly be a miss. Unknown mode proves no untriggered permission.
+
+## Required Read After Relevance
+
+- Before acting on a relevant message or scheduled wake, read `/home/node/.claude/skills/tessl__core-behavior/references/default-silence.md` in full.
+- Directives bind; read explicitly, never `@`-import. Missing or unreadable content stops the affected action.
+- Before joining indirectly, verify `requires_trigger` in runtime SQLite `registered_groups` under the reference's reader contract. Never substitute another store or look it up for a not-for-me message.

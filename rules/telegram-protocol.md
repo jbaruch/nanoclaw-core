@@ -6,8 +6,8 @@ alwaysApply: true
 
 ## Required Read
 
-- Before Telegram reactions or messages, read `skills/core-behavior/references/telegram-protocol.md` in full, including before relying on a threading carve-out.
-- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
+- Before Telegram reactions or messages, read `/home/node/.claude/skills/tessl__core-behavior/references/telegram-protocol.md` in full, including before relying on a threading carve-out.
+- Use the installed `jbaruch/nanoclaw-core` provider.
 - Reference directives are binding; read explicitly, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 
@@ -23,7 +23,7 @@ alwaysApply: true
 - Pass `reply_to` from the inbound `<message id="...">` tag when answering a user message.
 - Narrow exception for the reference's Reply threading carve-outs.
 - Applies to `pin: true`, `sender` set, or maintenance / scheduled-task sessions.
-- Preconditions are binding: read `skills/core-behavior/references/telegram-protocol.md` Reply threading before relying on it.
+- Preconditions are binding: read `/home/node/.claude/skills/tessl__core-behavior/references/telegram-protocol.md` Reply threading before relying on it.
 - Every other answer to a user message requires `reply_to`.
 
 ## Formatting

@@ -12,7 +12,7 @@ On Telegram, a bot is addressable by two surface forms — a display-name trigge
 
 ## Async Tasks
 
-For tasks that take more than 2 seconds and answer an inbound user message (a scheduled or maintenance wake has none to react to; see `rules/default-silence.md` Scheduled wakes):
+For tasks that take more than 2 seconds and answer an inbound user message (a scheduled or maintenance wake has none to react to; see `/home/node/.claude/skills/tessl__core-behavior/references/default-silence.md` Scheduled wakes):
 
 1. **ACK with a reaction** — `mcp__nanoclaw__react_to_message(messageId: <id>, emoji: "👍")`. Both args are required — pass the incoming message's id. No text before this.
 2. **Background Agent** — `Agent` tool with `run_in_background: true`.

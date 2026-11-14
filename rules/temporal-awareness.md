@@ -6,9 +6,9 @@ alwaysApply: true
 
 ## Required Read
 
-- Before proactive action, past/present/future framing or current-zone reads, read `skills/current-tz/references/temporal-awareness.md` in full.
+- Before proactive action, past/present/future framing or current-zone reads, read `/home/node/.claude/skills/tessl__current-tz/references/temporal-awareness.md` in full.
 - Read it before scheduling and firing reminders, heartbeat alerts, email flags, messages and suggestions, including reliance on any exception.
-- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
+- Use the installed `jbaruch/nanoclaw-core` provider.
 - Reference directives are binding; read explicitly, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 

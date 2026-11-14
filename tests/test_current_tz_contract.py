@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE = "/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py"
 REFERENCE = "skills/current-tz/references/temporal-awareness.md"
+NATIVE_REFERENCE = "/home/node/.claude/skills/tessl__current-tz/references/temporal-awareness.md"
 
 
 def test_named_provider_contract_and_native_skill_lookup_are_co_shipped():
@@ -23,8 +24,8 @@ def test_named_provider_contract_and_native_skill_lookup_are_co_shipped():
     for path in paths:
         assert path.is_file() and not path.is_symlink()
         assert path.resolve().is_relative_to(ROOT)
-    assert NATIVE in paths[0].read_text() and NATIVE in paths[1].read_text()
-    assert REFERENCE in paths[0].read_text() and REFERENCE in paths[1].read_text()
+    assert NATIVE in paths[0].read_text()
+    assert NATIVE_REFERENCE in paths[0].read_text() and NATIVE_REFERENCE in paths[1].read_text()
     assert NATIVE in paths[3].read_text()
 
 

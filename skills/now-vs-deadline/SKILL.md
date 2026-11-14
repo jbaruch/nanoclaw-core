@@ -11,10 +11,10 @@ Compares a deadline against the actual current instant and returns past/future p
 
 ## Step 1 — Read the Binding Reference
 
-Read the full reference within this installed `jbaruch/nanoclaw-core` plugin:
+Read the full reference from the installed `jbaruch/nanoclaw-core` provider:
 
 ```text
-skills/current-tz/references/temporal-awareness.md
+/home/node/.claude/skills/tessl__current-tz/references/temporal-awareness.md
 ```
 
 Follow its complete directives. Read explicitly, never through an `@` import. If missing or unreadable, stop until repaired. Proceed immediately to Step 2.

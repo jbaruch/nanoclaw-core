@@ -6,8 +6,8 @@ alwaysApply: true
 
 ## Required Read
 
-- Before claiming lost context, or treating a post-compaction skill block as a fresh task, read `skills/query-history/references/context-recovery.md` in full.
-- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
+- Before claiming lost context, or treating a post-compaction skill block as a fresh task, read `/home/node/.claude/skills/tessl__query-history/references/context-recovery.md` in full.
+- Use the installed `jbaruch/nanoclaw-core` provider.
 - Reference directives are binding; read explicitly, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 

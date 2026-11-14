@@ -169,6 +169,39 @@ def test_missing_chat_jid_returns_canonical_error(query_message_history, monkeyp
     assert payload["query"] == {"keyword": "release", "sender": None, "limit": 20, "offset": 0}
 
 
+@pytest.mark.parametrize(
+    "missing", ["id", "chat_jid", "timestamp", "sender_name", "content", "is_from_me"]
+)
+def test_missing_required_legacy_column_is_unavailable_without_repairing_store(
+    query_message_history, monkeypatch, tmp_path, missing: str
+):
+    database = tmp_path / "legacy.sqlite"
+    columns = {
+        "id": "TEXT",
+        "chat_jid": "TEXT",
+        "timestamp": "TEXT",
+        "sender_name": "TEXT",
+        "content": "TEXT",
+        "is_from_me": "INTEGER",
+    }
+    ddl = ", ".join(f"{name} {kind}" for name, kind in columns.items() if name != missing)
+    with sqlite3.connect(database) as connection:
+        connection.execute(f"CREATE TABLE messages ({ddl})")
+    before = database.read_bytes()
+    rc, payload, stderr = _run(
+        query_message_history,
+        ["--keyword", "release", "--sender", "alice"],
+        monkeypatch,
+        db_path=str(database),
+    )
+    assert rc == 1
+    payload = _require_payload(payload)
+    assert payload["rows"] == []
+    assert "no such column" in payload["error"]
+    assert missing in stderr
+    assert database.read_bytes() == before
+
+
 def test_keyword_filter_returns_matching_rows_in_chat(query_message_history, monkeypatch, tmp_path):
     db_path = str(tmp_path / "db.sqlite")
     _populate_db(db_path)

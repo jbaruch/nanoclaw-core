@@ -9,10 +9,10 @@ Process steps in order. Do not skip ahead.
 
 ## Step 1 — Read the Binding Reference
 
-Read the full reference within this installed `jbaruch/nanoclaw-core` plugin:
+Read the full reference from the installed `jbaruch/nanoclaw-core` provider:
 
 ```text
-skills/query-history/references/context-recovery.md
+/home/node/.claude/skills/tessl__query-history/references/context-recovery.md
 ```
 
 Follow its complete directives. Read explicitly, never through an `@` import. If missing or unreadable, stop until repaired. Proceed immediately to Step 2.

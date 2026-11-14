@@ -6,8 +6,8 @@ alwaysApply: true
 
 ## Required Read
 
-- Before responding, starting async work or delivering output, read `skills/core-behavior/references/core-behavior.md` in full.
-- Resolve references within the installed `jbaruch/nanoclaw-core` plugin.
+- Before responding, starting async work or delivering output, read `/home/node/.claude/skills/tessl__core-behavior/references/core-behavior.md` in full.
+- Use the installed `jbaruch/nanoclaw-core` provider.
 - Reference directives are binding; read explicitly, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 

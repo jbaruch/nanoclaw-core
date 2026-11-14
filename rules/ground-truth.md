@@ -8,7 +8,7 @@ alwaysApply: true
 
 - Before factual claims, acting on recalled state or verifying a mutation, read `/home/node/.claude/skills/tessl__core-behavior/references/ground-truth.md` in full.
 - Use the installed `jbaruch/nanoclaw-core` provider.
-- Reference directives are binding; read explicitly, never through an `@` import.
+- Reference directives are binding; read explicitly with the native Read tool, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 
 ## Verify Claims

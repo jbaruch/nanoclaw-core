@@ -8,7 +8,7 @@ alwaysApply: true
 
 - Before Telegram reactions or messages, read `/home/node/.claude/skills/tessl__core-behavior/references/telegram-protocol.md` in full, including before relying on a threading carve-out.
 - Use the installed `jbaruch/nanoclaw-core` provider.
-- Reference directives are binding; read explicitly, never through an `@` import.
+- Reference directives are binding; read explicitly with the native Read tool, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 
 ## Acknowledgement

@@ -8,7 +8,7 @@ alwaysApply: true
 
 - Before claiming lost context, or treating a post-compaction skill block as a fresh task, read `/home/node/.claude/skills/tessl__query-history/references/context-recovery.md` in full.
 - Use the installed `jbaruch/nanoclaw-core` provider.
-- Reference directives are binding; read explicitly, never through an `@` import.
+- Reference directives are binding; read explicitly with the native Read tool, never through an `@` import.
 - If a reference is missing or unreadable, stop the affected action until repaired.
 
 ## Recover History

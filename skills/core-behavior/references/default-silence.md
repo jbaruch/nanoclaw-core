@@ -18,9 +18,37 @@ Silence means success. Text means there's something worth saying. (Acknowledgeme
 - Its "silent success" is zero output: no `send_message`, no emoji, no reaction, no streamed text.
 - Send an acknowledgement emoji only as a reaction to an inbound user message, never through `send_message`.
 
-## Relevance boundary
+## Not-for-me messages
 
-The complete tool-free relevance decision and zero-output not-for-me path remain in `rules/default-silence.md`. Read this reference only after deciding to engage, or for a scheduled wake.
+- A message that is not for you gets zero output from you: no text, no tool call, no reaction, not even `<internal>` tags
+- The runtime's `react-first` 👀 fires only on a message addressed to you (see `rules/telegram-protocol.md`)
+- Narrating the non-decision in any form (prose, a parenthetical, asterisks, «Молчу») IS the leak
+- Whether a message can be "not for me" depends on how it reached you (see How a message reached you)
+
+## How a message reached you
+
+The prompt carries no gate verdict. Read it from the message itself.
+
+- **Main chat:** every message routes to you and every message is for you
+- **Addressed directly** in any other chat: a reply to one of your messages, an @-mention of your handle, your name as a word, or the chat's trigger pattern. Respond; "not for me" does not apply
+- **A private 1:1 chat with the assistant** counts as addressed directly
+- **While Jev is available**, anything else in a non-main chat is a message Jev's relevance gate passed (`src/gates/relevance.ts` in `jbaruch/nanoclaw`)
+- **During a Jev outage**, an untriggered chat delivers every message unscored; a delivered message there proves nothing about relevance
+- **During a Jev outage**, a triggered chat delivers only direct address
+- A message not addressed directly is your call, and zero output is a valid outcome
+- Before staying silent on it, work out what made it look relevant: a question to the room you can answer, something about you or your work, a topic you own
+
+## Triggered and untriggered chats
+
+- **Untriggered chat** (`requires_trigger=0`): join a message not addressed to you when you have something useful to add
+- **Triggered chat** (`requires_trigger=1`, the default for registered groups): join a message not addressed to you only when staying out would clearly be a miss
+- The authoritative `requires_trigger` value lives in the SQLite `registered_groups` table (shared `messages.db`); `/workspace/ipc/available_groups.json` is derivative and incomplete
+
+## Reference read boundary
+
+Use the loaded `rules/default-silence.md` to decide relevance without tools. Read this reference only after deciding to engage, or for a scheduled wake. The retained relevance clauses above do not require a read on the not-for-me path.
+
+A transport retry demanding visible output does not change the original message's relevance. A not-for-me message still gets zero output, including no narration of silence.
 
 ## Runtime-owned group policy table
 

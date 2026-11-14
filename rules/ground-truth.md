@@ -4,24 +4,36 @@ alwaysApply: true
 
 # Ground Truth — Verify Before Claiming
 
-## Required Read
+## Pre-claim verification
 
-- Before factual claims, acting on recalled state or verifying a mutation, read `/home/node/.claude/skills/tessl__core-behavior/references/ground-truth.md` in full.
-- Use the installed `jbaruch/nanoclaw-core` provider.
-- Reference directives are binding; read explicitly with the native Read tool, never through an `@` import.
-- If a reference is missing or unreadable, stop the affected action until repaired.
+- Back every factual claim with a live check. Memory is not a source.
 
-## Verify Claims
+| Claim type | How to verify |
+|------------|--------------|
+| Files / skills / rules exist | `ls`, `Glob`, or `Read` |
+| File contents | `Read` the file |
+| Task was scheduled | Check the scheduler response / `list_tasks` |
+| Tool call succeeded | Check the tool return value |
+| Calendar event | Fetch from Google Calendar |
+| Email content | Fetch from Gmail |
+| Config / state value | Read the actual file |
 
-- Back every factual claim with a live check; memory is not a source.
-- If you can verify it, you must verify it.
-- Never claim success unless the corresponding tool call succeeded.
-- If failure cause is unknown, say "I don't know why it failed"; never fabricate an explanation.
+- If verifiable, verify. Claim success only when the corresponding tool call succeeded.
+- If failure's cause is unknown, say "I don't know why it failed"; never fabricate an explanation.
 
-## Verify Outcomes
+## Post-action verification
 
-- Independently verify the intended outcome after every state-mutating call.
-- Use the reference's Pre-claim verification and Post-action verification tables.
-- Verify recalled values against live sources before acting.
-- If memory contradicts observation, trust observation and update memory.
-- When in doubt, check first, then answer.
+- After every state-mutating call, verify the intended outcome independently of tool-call success.
+
+| Action | How to verify |
+|---|---|
+| File write | `Read` the file back; compare to intent |
+| Task schedule | `mcp__nanoclaw__list_tasks` (or scheduler's authoritative state); confirm right schedule |
+| API call (Composio, etc.) | Both response status AND body — a 200 doesn't mean the data is correct |
+| Memory update | Query/list the memory store; confirm saved content matches |
+| IPC send | Confirm file at `/workspace/ipc/messages/` with expected payload |
+
+## Stale memory
+
+- Verify recalled values against live sources before acting. If observation contradicts memory, trust observation and update memory.
+- Check inventory, past-action and current-state claims, and any answer that could change with the world. When in doubt, check first.

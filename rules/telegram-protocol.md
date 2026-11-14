@@ -4,30 +4,22 @@ alwaysApply: true
 
 # Telegram Communication Protocol
 
-## Required Read
-
-- Before Telegram reactions or messages, read `/home/node/.claude/skills/tessl__core-behavior/references/telegram-protocol.md` in full, including before relying on a threading carve-out.
-- Use the installed `jbaruch/nanoclaw-core` provider.
-- Reference directives are binding; read explicitly with the native Read tool, never through an `@` import.
-- If a reference is missing or unreadable, stop the affected action until repaired.
-
 ## Acknowledgement
 
-- Runtime 👀 acknowledges addressed messages; do not duplicate it.
-- Upgrade reactions only after inspecting the message, under the reference's Acknowledgement contract.
-- Jev-passed unaddressed messages get no runtime reaction; follow `rules/core-behavior.md` Async Tasks when answering a long task, and add none when silent.
-- React, work, deliver; never send an "I'm starting now" reply.
+- Runtime `react-first` UserPromptSubmit hook emits 👀 only for addressed messages; no manual receipt ACK needed.
+- Jev-passed unaddressed messages get no runtime reaction. If answering, use 👍 for long tasks per `rules/core-behavior.md`; if silent, add none.
+- After inspection, upgrade reactions: 👌 got it/working, 👍 acknowledged/done, 🔥 urgent, 🤔 thinking/investigating, 🤝 done/confirmed. Each call replaces the prior emoji; unsupported emoji fall back to 👍.
+- React → work → deliver; never send "I'm starting now" text.
 
-## Threading
+## Reply threading
 
-- Pass `reply_to` from the inbound `<message id="...">` tag when answering a user message.
-- Narrow exception for the reference's Reply threading carve-outs.
-- Applies to `pin: true`, `sender` set, or maintenance / scheduled-task sessions.
-- Preconditions are binding: read `/home/node/.claude/skills/tessl__core-behavior/references/telegram-protocol.md` Reply threading before relying on it.
-- Every other answer to a user message requires `reply_to`.
+- `reply-threading-enforcement` PreToolUse hook denies standalone `send_message` while latest user inbound is unanswered. Reply using `reply_to` from `<message id="...">`.
+- Narrow exception for threading bypass:
+  1. `pin: true` status/briefing, `sender` set for a persona, or maintenance/scheduled session.
+- Every other user response requires `reply_to`; unsolicited output may stand alone.
 
 ## Formatting
 
-- Use Telegram HTML and `•` bullets.
-- Follow the reference's Formatting contract for supported tags and hook rewrites.
-- Escape only `<`, `>` and `&` in user data; never escape apostrophes or double quotes as `&apos;` / `&quot;`.
+- Use Telegram HTML, including `<tg-spoiler>`; bullets use `•`.
+- `no-markdown-in-send-message` PreToolUse hook rewrites `**bold**`→`<b>`, `[label](url)`→`<a href>`, backtick code→`<code>`, `- ` / `* ` bullets→`•`. Use raw `<i>`, `<u>`, `<s>`, `<pre>` with optional `<code class="language-python">` using actual language, `<blockquote>`, `<tg-spoiler>`.
+- In user data escape only `<`, `>`, `&` as `&lt;`, `&gt;`, `&amp;`. Leave quotes/apostrophes raw; never use `&quot;` / `&apos;`.

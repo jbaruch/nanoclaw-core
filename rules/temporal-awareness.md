@@ -4,27 +4,21 @@ alwaysApply: true
 
 # Temporal Awareness
 
-## Required Read
-
-- Before proactive action, past/present/future framing or current-zone reads, read `/home/node/.claude/skills/tessl__current-tz/references/temporal-awareness.md` in full.
-- Read it before scheduling and firing reminders, heartbeat alerts, email flags, messages and suggestions, including reliance on any exception.
-- Use the installed `jbaruch/nanoclaw-core` provider.
-- Reference directives are binding; read explicitly with the native Read tool, never through an `@` import.
-- If a reference is missing or unreadable, stop the affected action until repaired.
-
 ## Time and Context
 
-- Check real UTC time, owner's local time, calendar and travel context before proactive action.
-- Assess whether the action window is open, owner can act, owner already knows, and timing is appropriate.
-- If reaching out clearly makes no sense, do not; if uncertain, assess usefulness versus noise.
-- Compute past/future, elapsed deadlines and remaining time with `Skill(skill: "now-vs-deadline")`; resolve a timezone-aware instant first and follow the verdict.
+- Before scheduling/firing reminders, heartbeat/email alerts or proactive messages/suggestions, check real UTC, owner's local time, calendar and travel context.
+- Assess open action window, ability to act, existing awareness and appropriate timing. If clearly useless, stay silent; if uncertain, weigh usefulness versus noise.
+- Compute past/future framing, elapsed deadlines and remaining time via `Skill(skill: "now-vs-deadline")`; resolve a timezone-aware instant first, follow its location-agnostic verdict, never eyeball.
 
 ## Scoped current-zone script contract
 
-- Read current zone only through this provider's regular target `/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py`.
-- Never use container clock, handwritten SQL, copied readers or caller-selected paths for this lookup.
-- Production invocation takes no arguments or input; never use `--now` operationally.
-- Follow the reference's Scoped current-zone script contract for schema, output and failures.
-- Retain caller-required unavailable/error handling; a failed read never grants a usable zone.
-- Parsing grants no timezone-write, scheduling, model, owner or delivery authority and no exception to subsequent checks.
-- Host alone migrates; reader never rewrites or upgrades rows.
+- Use `jbaruch/nanoclaw-core`'s regular target `/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py`; never container clock, handwritten SQL, copied reader or caller-selected path.
+- Production: no arguments/input; no `--now` clock substitution.
+- JSON stdout: `available,tz,local_now,local_date`. Usable: `available:true`, valid IANA zone and local instant/date. Unavailable: `false`, null projection fields. Failed reads grant no zone; retain caller-required unavailable/error handling. Target docstring owns exits/diagnostics.
+- No timezone-write, scheduling, model, owner or delivery authority; no exception to later checks.
+
+## Runtime owner
+
+- `jbaruch/nanoclaw`'s `src/db-tz.ts` writes `tz_state` in `/workspace/store/messages.db`. Schema: `src/state-migrations/state-010-tz-state.schema.md`; migrations there: `state-010-tz-state.ts`, `state-012-tz-state-segments.ts`, `state-013-tz-state-segments-datetime.ts`, `state-015-tz-state-stale-warning.ts`.
+- Select only `current_tz,schema_version` at `id=1`; accept only record version4, nonblank valid IANA zone. Missing row, unsupported version or invalid zone is unavailable. Host alone migrates; reader never rewrites/upgrades.
+- Source-authoring verification binds trusted base manifest to this repo and reads this declared regular rule; never claims unmerged content is installed.

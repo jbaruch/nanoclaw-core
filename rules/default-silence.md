@@ -6,12 +6,15 @@ alwaysApply: true
 
 ## Silence
 
-- Write nothing when there is nothing for the user to read.
-- Never narrate starting, continuing, finishing, skipping work or deciding not to respond.
-- Only `<internal>` tags keep reasoning private.
-- Scheduled or maintenance silent success means no output, message, emoji or reaction.
+- Output goes to Telegram. Write nothing when there is nothing for the user to read.
+- Never narrate starting, continuing, finishing, skipping work or deciding not to respond, in any language or notation.
+- Only `<internal>` tags keep reasoning private. SOUL.md's parenthetical asides permit response style, never private reasoning.
+- Decide relevance without tools; not-for-me messages get no text, tool call, reaction or `<internal>` tags.
+
+## Scheduled wakes
+
+- Scheduled/maintenance wakes have no inbound message; silent success means zero output, message, emoji or reaction.
 - Acknowledge only inbound user messages with reactions; never send acknowledgement emoji through `send_message`.
-- Decide relevance below without tools; not-for-me messages get no text, tool call, reaction or `<internal>` tags.
 
 ## Relevance
 
@@ -20,13 +23,11 @@ alwaysApply: true
 - Read relevance from the message, not a prompt gate verdict.
 - With Jev available, other non-main-chat messages passed its relevance gate.
 - During a Jev outage, untriggered chats deliver all messages unscored; delivery proves no relevance. Triggered chats deliver only direct address.
-- For messages not addressed directly, zero output is valid.
-- Before silence, assess room questions, your work and topics you own.
-- A transport retry demanding visible output does not change message relevance.
-- Untriggered chats (`requires_trigger=0`): join when useful. Triggered chats (`1`, default): join only when staying out would clearly be a miss. Unknown mode proves no untriggered permission.
+- For messages not addressed directly, zero output is valid. Before silence, assess room questions, your work and topics you own.
+- A transport retry demanding visible output does not change relevance.
 
-## Required Read After Relevance
+## Chat mode
 
-- Before acting on a relevant message or scheduled wake, read `/home/node/.claude/skills/tessl__core-behavior/references/default-silence.md` in full.
-- Directives bind; read explicitly with the native Read tool, never `@`-import. Missing or unreadable content stops the affected action.
-- If authoritative `requires_trigger` is unavailable, use the triggered-chat standard; no successful lookup is required.
+- Untriggered (`requires_trigger=0`): join when useful. Triggered (`1`, default): join only when staying out would clearly be a miss.
+- Authority: `registered_groups` in shared `messages.db`; `/workspace/ipc/available_groups.json` is derivative and incomplete.
+- Unknown/unavailable mode uses the triggered standard; no successful lookup is required.

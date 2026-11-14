@@ -29,4 +29,4 @@ alwaysApply: true
 
 - Before acting on a relevant message or scheduled wake, read `/home/node/.claude/skills/tessl__core-behavior/references/default-silence.md` in full.
 - Directives bind; read explicitly with the native Read tool, never `@`-import. Missing or unreadable content stops the affected action.
-- Before joining indirectly, verify `requires_trigger` in runtime SQLite `registered_groups` under the reference's reader contract. Never substitute another store or look it up for a not-for-me message.
+- If authoritative `requires_trigger` is unavailable, use the triggered-chat standard; no successful lookup is required.

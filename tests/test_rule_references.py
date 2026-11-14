@@ -156,6 +156,21 @@ def test_silent_relevance_decision_is_complete_before_any_reference_read():
     assert "do not require a read on the not-for-me path" in reference
 
 
+def test_unavailable_chat_policy_preserves_conservative_join_permission(installed_plugin):
+    _, installed, startup = installed_plugin
+    # Untrusted runtime projections omit registered_groups. A useful room
+    # question must still be answerable under the original triggered standard.
+    assert (
+        "If authoritative `requires_trigger` is unavailable, use the triggered-chat standard; "
+        "no successful lookup is required."
+    ) in startup.read_text()
+    reference = (
+        installed / "skills/tessl__core-behavior/references/default-silence.md"
+    ).read_text()
+    assert "Before joining indirectly, verify" not in startup.read_text()
+    assert "Stop the affected join" not in reference
+
+
 def test_script_contracts_have_one_canonical_prose_location():
     history = (ROOT / "skills/query-history/SKILL.md").read_text()
     recovery = (ROOT / "skills/query-history/references/context-recovery.md").read_text()

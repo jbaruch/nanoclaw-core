@@ -6,15 +6,10 @@ untrusted groups), and a per-group /workspace/state mount. Never widen either
 scope. OneCLI supplies TypeSafe authentication through HTTPS_PROXY/the mounted
 CA; this script holds no key. No request retries or alternate classifiers.
 
-No arguments: run the precheck. `handled`: read a nonempty JSON list of supplied
-message IDs from stdin and record Claude's final no-reply decisions in existing
-seen-state. This mode neither reads messages.db nor calls Jev or chat tools.
 """
 
-import hashlib
 import http.client
 import json
-import math
 import os
 import sqlite3
 import sys
@@ -28,7 +23,7 @@ STATE_PATH = Path("/workspace/state/check-unanswered/seen.json")
 MODEL = "jev-1.14.0"
 # #110, question v1: https://github.com/jbaruch/nanoclaw-core/issues/110
 # Score field: Choice.choice, no probability/confidence threshold. Only the
-# 'unanswered' label wakes; cant_tell/unavailability stay pending and silent,
+# 'unanswered' label wakes; cant_tell and unavailability stay silent,
 # per the owner's issue contract (overrides script-delegation's reasoning wake).
 # Renew the model/question with the owner quarterly; never float the model.
 QUESTION = {
@@ -150,33 +145,10 @@ def classify(state):
     if not isinstance(result, dict) or result.get("model") != MODEL:
         raise ValueError("Jev response model outside contract")
     answers = result.get("answers")
-    if not isinstance(answers, dict) or set(answers) != {"drop"}:
-        raise ValueError("Jev response questions outside contract")
-    answer = answers["drop"]
-    if not isinstance(answer, dict):
-        raise ValueError("Jev response answer outside contract")
-    choice, probabilities = answer.get("choice"), answer.get("probabilities")
-    if (
-        answer.get("type") != "choice"
-        or not isinstance(choice, str)
-        or choice not in QUESTION["criteria"]
-        or not isinstance(probabilities, dict)
-        or set(probabilities) != set(QUESTION["criteria"])
-    ):
+    answer = answers.get("drop") if isinstance(answers, dict) else None
+    choice = answer.get("choice") if isinstance(answer, dict) else None
+    if not isinstance(choice, str) or choice not in QUESTION["criteria"]:
         raise ValueError("Jev response choice outside contract")
-    values = [answer.get("confidence"), *probabilities.values()]
-    if any(
-        isinstance(p, bool)
-        or not isinstance(p, (int, float))
-        or not 0 <= p <= 1
-        or not math.isfinite(p)
-        for p in values
-    ):
-        raise ValueError("Jev response probabilities outside contract")
-    if not math.isclose(sum(probabilities.values()), 1, abs_tol=0.01) or probabilities[
-        choice
-    ] != max(probabilities.values()):
-        raise ValueError("Jev response distribution outside contract")
     return choice
 
 
@@ -184,9 +156,11 @@ def check(conn, chat, now, seen):
     drops, current = [], {}
     truncated = False
     for candidate in candidates(conn, chat, now):
-        prior = seen.get(candidate["id"], {})
-        if isinstance(prior, dict) and prior.get("handled") is True:
-            current[candidate["id"]] = prior
+        # One Jev Choice per candidate; a confirmed drop wakes Claude once.
+        if candidate["id"] in seen:
+            current[candidate["id"]] = seen[candidate["id"]]
+            continue
+        if truncated:
             continue
         try:
             state = evidence(conn, chat, candidate)
@@ -196,24 +170,16 @@ def check(conn, chat, now, seen):
                 file=sys.stderr,
             )
             continue
-        digest = hashlib.sha256(encoded([MODEL, QUESTION, state])).hexdigest()
-        if isinstance(prior, dict) and prior.get("input") == digest:
-            choice = prior.get("choice")
-        else:
-            try:
-                choice = classify(state)
-            except (OSError, ValueError, http.client.HTTPException) as exc:
-                # Neither provider bodies nor exception strings are safe to log.
-                print(
-                    f"check-unanswered: Jev unavailable ({type(exc).__name__}); "
-                    "check the OneCLI TypeSafe route; retry next cadence",
-                    file=sys.stderr,
-                )
-                continue
-        if not isinstance(choice, str) or choice not in QUESTION["criteria"]:
-            print("check-unanswered: invalid cached choice; retry next cadence", file=sys.stderr)
+        try:
+            choice = classify(state)
+        except (OSError, ValueError, http.client.HTTPException) as exc:
+            # Neither provider bodies nor exception strings are safe to log.
+            print(
+                f"check-unanswered: Jev unavailable ({type(exc).__name__}); "
+                "check the OneCLI TypeSafe route; retry next cadence",
+                file=sys.stderr,
+            )
             continue
-        current[candidate["id"]] = {"input": digest, "choice": choice}
         if choice == "unanswered":
             message = dict(candidate)
             # Reserve the truncation marker and stdout newline before adding
@@ -228,18 +194,18 @@ def check(conn, chat, now, seen):
             proposed["data"]["messages"] = [*drops, message]
             if len(encoded(proposed)) + 1 > MAX_OUTPUT_BYTES:
                 truncated = True
-                break
+                # Unrecorded, so the next run classifies and offers it.
+                continue
             drops.append(message)
+        current[candidate["id"]] = choice
     data = {"chat_jid": chat, "messages": drops} if drops else {}
     if truncated:
         data["truncated"] = True
     return {"wake_agent": bool(drops), "data": data}, current
 
 
-def main(args=()):
+def main():
     try:
-        if args and list(args) != ["handled"]:
-            raise ValueError("Run without arguments, or use handled with message IDs on stdin")
         chat = os.environ.get("NANOCLAW_CHAT_JID")
         if not chat:
             raise ValueError("NANOCLAW_CHAT_JID required; run in the host's native group context")
@@ -257,24 +223,13 @@ def main(args=()):
                     "Invalid seen-state; inspect /workspace/state/check-unanswered/seen.json"
                 )
             seen = saved["seen"]
-        if args:
-            handled = json.load(sys.stdin)
-            if not isinstance(handled, list) or not handled:
-                raise ValueError("handled requires a nonempty JSON list of message IDs")
-            for mid in handled:
-                prior = seen.get(mid) if isinstance(mid, str) else None
-                if not isinstance(prior, dict) or prior.get("choice") != "unanswered":
-                    raise ValueError("handled requires a cached unanswered message in this chat")
-                prior["handled"] = True
-            payload = {"wake_agent": False, "data": {}}
-        else:
-            db = Path(os.environ.get("NANOCLAW_DB", "/workspace/store/messages.db"))
-            conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
-            conn.row_factory = sqlite3.Row
-            try:
-                payload, seen = check(conn, chat, datetime.now(timezone.utc), seen)
-            finally:
-                conn.close()
+        db = Path(os.environ.get("NANOCLAW_DB", "/workspace/store/messages.db"))
+        conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        conn.row_factory = sqlite3.Row
+        try:
+            payload, seen = check(conn, chat, datetime.now(timezone.utc), seen)
+        finally:
+            conn.close()
         STATE_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         STATE_PATH.parent.chmod(0o700)
         with tempfile.NamedTemporaryFile(mode="wb", dir=STATE_PATH.parent, delete=False) as out:
@@ -290,8 +245,7 @@ def main(args=()):
         # Do not echo untrusted DB/state/provider text through scheduler notices.
         error = (
             f"check-unanswered unavailable ({type(exc).__name__}); verify native "
-            "NANOCLAW_CHAT_JID, messages.db schema/read access, seen-state JSON "
-            "and handled message-ID JSON input"
+            "NANOCLAW_CHAT_JID, messages.db schema/read access and seen-state JSON"
         )
         print(error, file=sys.stderr)
         print(json.dumps({"wake_agent": False, "data": {"error": error}}))
@@ -301,4 +255,4 @@ def main(args=()):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

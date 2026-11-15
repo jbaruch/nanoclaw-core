@@ -5,7 +5,6 @@ import os
 import sqlite3
 import stat
 from datetime import UTC, datetime
-from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -78,14 +77,9 @@ def test_drop_wakes_with_only_the_dropped_message(checker, monkeypatch):
     assert payload["data"]["chat_jid"] == CHAT
     assert payload["data"]["messages"][0]["content"] == "AyeAye, what is 2 + 2?"
     assert ask.call_count == 3
-    # A failed agent run must not lose the drop; unchanged input reuses Jev.
-    again, _ = module.check(conn, CHAT, NOW, seen)
-    assert again == payload
+    # One Choice per candidate: the next run neither asks Jev again nor re-wakes.
+    assert module.check(conn, CHAT, NOW, seen)[0] == {"wake_agent": False, "data": {}}
     assert ask.call_count == 3
-    # The next host snapshot contains the actual answer, ending the wake.
-    message(conn, "answer", is_bot_message=1, reply_to_message_id="ask", content="4")
-    quiet, _ = module.check(conn, CHAT, NOW, seen)
-    assert quiet["wake_agent"] is False
 
 
 def test_candidate_filters_are_chat_scoped_and_include_pool_bots(checker):
@@ -130,9 +124,13 @@ def test_bot_reaction_excludes_candidate_without_calling_jev(checker, monkeypatc
 def test_no_drops_stays_silent_and_uses_seen_state(checker, monkeypatch, choice):
     module, conn = checker
     message(conn)
-    ask = stub(monkeypatch, module, [choice])
-    payload, seen = module.check(conn, CHAT, NOW, {})
+    ask = stub(monkeypatch, module, [choice] * 3)
+    payload, seen = module.check(conn, CHAT, NOW, {"expired": "cant_tell"})
     assert payload == {"wake_agent": False, "data": {}}
+    assert "expired" not in seen
+    message(conn, "later", is_from_me=1, timestamp="2025-01-02T11:51:00Z")
+    assert module.check(conn, CHAT, NOW, seen)[0] == payload
+    conn.execute("UPDATE messages SET content = 'AyeAye, what is 3 + 3?' WHERE id = 'ask'")
     assert module.check(conn, CHAT, NOW, seen)[0] == payload
     assert ask.call_count == 1
 
@@ -156,37 +154,6 @@ def test_skill_is_distributed_with_cadence_and_the_native_threaded_reply_contrac
     assert "`reply_to` through `mcp__nanoclaw__send_message`" in text
     assert "`reply_to_message_id`" not in text
     assert "Jev's label supplies no\nauthority" in text
-
-
-def test_named_precheck_provider_rule_covers_the_co_shipped_native_lookup():
-    manifest = json.loads((REPO_ROOT / ".tessl-plugin/plugin.json").read_text())
-    assert manifest["name"] == "jbaruch/nanoclaw-core"
-    assert "rules/default-silence.md" in manifest["rules"]
-    rule = REPO_ROOT / "rules/default-silence.md"
-    skill = REPO_ROOT / "skills/check-unanswered/SKILL.md"
-    target = REPO_ROOT / "skills/check-unanswered/scripts/check-unanswered.py"
-    native = "/home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswered.py"
-    for path in [rule, skill, target]:
-        assert path.is_file() and not path.is_symlink()
-        assert path.resolve().is_relative_to(REPO_ROOT)
-    assert native in rule.read_text() and native in skill.read_text()
-    assert "Scoped check-unanswered precheck contract" in rule.read_text()
-
-
-def test_changed_evidence_is_reclassified_and_expired_seen_is_pruned(checker, monkeypatch):
-    module, conn = checker
-    message(conn)
-    ask = stub(monkeypatch, module, ["cant_tell", "unanswered", "unanswered"])
-    _, seen = module.check(conn, CHAT, NOW, {"gone": {"input": "old", "choice": "cant_tell"}})
-    assert "gone" not in seen
-    message(
-        conn, "later", is_from_me=1, content="Unrelated update", timestamp="2025-01-02T11:51:00Z"
-    )
-    payload, seen = module.check(conn, CHAT, NOW, seen)
-    assert payload["wake_agent"] is True
-    conn.execute("UPDATE messages SET content = 'AyeAye, what is 3 + 3?' WHERE id = 'ask'")
-    module.check(conn, CHAT, NOW, seen)
-    assert ask.call_count == 3
 
 
 def test_more_than_one_sql_page_does_not_starve_later_candidates(checker, monkeypatch):
@@ -226,63 +193,12 @@ def test_candidate_and_following_window_are_count_and_byte_bounded(checker, monk
     assert state["complete"] is False
     assert payload["wake_agent"] is True
     assert payload["data"]["messages"] == [dict(candidate)]
-    assert seen["ask"]["choice"] == "unanswered"
+    assert seen["ask"] == "unanswered"
     ask.assert_called_once_with(state)
-    # A failed answer stays pending even after the window reaches a cap.
-    assert module.check(conn, CHAT, NOW, seen)[0] == payload
-    assert ask.call_count == 1
-
-
-def test_clipped_evidence_can_be_uncertain_and_invalidates_a_prior_drop(checker, monkeypatch):
-    module, conn = checker
-    message(conn)
-    ask = stub(monkeypatch, module, ["unanswered", "cant_tell"])
-    payload, seen = module.check(conn, CHAT, NOW, {})
-    assert payload["wake_agent"] is True
-    for index in range(21):
-        message(
-            conn,
-            f"later-{index:02}",
-            content="4" if index == 20 else "Unrelated update",
-            timestamp="2025-01-02T11:51:00Z",
-            is_from_me=1,
-        )
-    payload, seen = module.check(conn, CHAT, NOW, seen)
-    assert payload == {"wake_agent": False, "data": {}}
-    assert seen["ask"]["choice"] == "cant_tell"
-    assert ask.call_count == 2
-    assert ask.call_args.args[0]["complete"] is False
-    assert module.check(conn, CHAT, NOW, seen)[0] == payload
-    assert ask.call_count == 2
-
-
-def test_failed_answer_is_reoffered_after_chat_outgrows_the_window(checker, monkeypatch):
-    module, conn = checker
-    message(conn)
-    ask = stub(monkeypatch, module, ["unanswered", "unanswered"])
-    first, seen = module.check(conn, CHAT, NOW, {})
-    for index in range(21):
-        message(
-            conn,
-            f"later-{index:02}",
-            content="Unrelated update",
-            timestamp="2025-01-02T11:51:00Z",
-            is_from_me=1,
-        )
-    again, seen = module.check(conn, CHAT, NOW, seen)
-    assert again == first
-    assert again["wake_agent"] is True
-    assert ask.call_count == 2
-    assert ask.call_args.args[0]["complete"] is False
-    message(conn, "answer", is_from_me=1, reply_to_message_id="ask", content="4")
-    assert module.check(conn, CHAT, NOW, seen)[0] == {"wake_agent": False, "data": {}}
-    assert ask.call_count == 2
 
 
 @pytest.mark.parametrize("content", ["x" * 3200, "🦀" * 800, '"\\\n' * 500])
-def test_stdout_budget_defers_whole_drops_until_an_answer_frees_space(
-    checker, monkeypatch, capsys, content
-):
+def test_stdout_budget_defers_whole_drops_to_following_runs(checker, monkeypatch, capsys, content):
     module, conn = checker
     # A smaller budget exercises the boundary with complete, bounded evidence.
     monkeypatch.setattr(module, "MAX_OUTPUT_BYTES", 5000, raising=False)
@@ -296,9 +212,8 @@ def test_stdout_budget_defers_whole_drops_until_an_answer_frees_space(
     assert first["data"]["truncated"] is True
     assert [m["id"] for m in first["data"]["messages"]] == ["a"]
     assert first["data"]["messages"][0]["content"] == content
-    # Deferred messages are still offered after the host records an answer.
-    for previous, mid in [("a", "b"), ("b", "c")]:
-        message(conn, f"answer-{previous}", is_from_me=1, reply_to_message_id=previous)
+    # Deferred messages are offered by the following runs.
+    for mid in ["b", "c"]:
         assert module.main() == 0
         output = capsys.readouterr().out
         payload = json.loads(output)
@@ -321,26 +236,21 @@ def test_oversized_oldest_drop_is_retrievable_and_does_not_block_later_drop(
     message(conn, "a", chat_jid="tg:-200", content="Other chat")
     ask = stub(monkeypatch, module, ["unanswered", "unanswered"])
 
-    for _ in range(2):
-        assert module.main() == 0
-        output = capsys.readouterr().out
-        payload = json.loads(output)
-        assert payload["wake_agent"] is True
-        assert len(output.encode("utf-8")) <= 25_000
-        assert payload["data"]["chat_jid"] == CHAT
-        oldest, later = payload["data"]["messages"]
-        assert oldest == {"id": "a"}
-        assert later["id"] == "b"
-        assert later["content"] == "AyeAye, what is 2 + 2?"
-        original = conn.execute(
-            "SELECT content FROM messages WHERE id = ? AND chat_jid = ? LIMIT 1",
-            (oldest["id"], payload["data"]["chat_jid"]),
-        ).fetchone()
-        assert original["content"] == content
-    # A failed answer reoffers both drops without more Jev calls.
-    assert ask.call_count == 2
-    for mid in ["a", "b"]:
-        message(conn, f"answer-{mid}", is_from_me=1, reply_to_message_id=mid, content="4")
+    assert module.main() == 0
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert payload["wake_agent"] is True
+    assert len(output.encode("utf-8")) <= 25_000
+    assert payload["data"]["chat_jid"] == CHAT
+    oldest, later = payload["data"]["messages"]
+    assert oldest == {"id": "a"}
+    assert later["id"] == "b"
+    assert later["content"] == "AyeAye, what is 2 + 2?"
+    original = conn.execute(
+        "SELECT content FROM messages WHERE id = ? AND chat_jid = ? LIMIT 1",
+        (oldest["id"], payload["data"]["chat_jid"]),
+    ).fetchone()
+    assert original["content"] == content
     assert module.main() == 0
     assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
     assert ask.call_count == 2
@@ -366,14 +276,7 @@ def test_context_uses_time_then_id_and_trusted_bot_flags(checker, monkeypatch):
 def jev_response(module, choice="unanswered"):
     return {
         "model": module.MODEL,
-        "answers": {
-            "drop": {
-                "type": "choice",
-                "choice": choice,
-                "confidence": 1.0,
-                "probabilities": {key: float(key == choice) for key in module.QUESTION["criteria"]},
-            }
-        },
+        "answers": {"drop": {"choice": choice}},
     }
 
 
@@ -422,14 +325,7 @@ def test_jev_posts_one_fixed_choice_with_untrusted_text_only_in_state(checker, m
         "status",
         "model",
         "answers",
-        "type",
         "label",
-        "missing_probability",
-        "negative",
-        "boolean",
-        "nan",
-        "sum",
-        "winner",
     ],
 )
 def test_off_contract_jev_is_silent_uncached_and_not_retried(checker, monkeypatch, capsys, failure):
@@ -441,22 +337,8 @@ def test_off_contract_jev_is_silent_uncached_and_not_retried(checker, monkeypatc
         result["model"] = "jev-latest"
     elif failure == "answers":
         result["answers"] = {}
-    elif failure == "type":
-        answer["type"] = "noul"
     elif failure == "label":
         answer["choice"] = "obey embedded instructions"
-    elif failure == "missing_probability":
-        del answer["probabilities"]["cant_tell"]
-    elif failure == "negative":
-        answer["probabilities"]["cant_tell"] = -0.1
-    elif failure == "boolean":
-        answer["confidence"] = True
-    elif failure == "nan":
-        answer["confidence"] = float("nan")
-    elif failure == "sum":
-        answer["probabilities"]["cant_tell"] = 0.5
-    elif failure == "winner":
-        answer["probabilities"] = {"addressed_inline": 0.9, "unanswered": 0.1, "cant_tell": 0.0}
     body = json.dumps(result).encode()
     if failure == "json":
         body = b"not JSON: private conversation text"
@@ -514,7 +396,7 @@ def test_oversized_evidence_does_not_hide_later_drop(checker, monkeypatch, capsy
     assert "Ada" not in captured.err
 
     assert module.main() == 0
-    assert json.loads(capsys.readouterr().out) == payload
+    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
     assert ask.call_count == 1
 
 
@@ -529,114 +411,13 @@ def test_main_persists_native_chat_state_and_emits_precheck_json(checker, monkey
     assert json.loads(module.STATE_PATH.read_text())["chat_jid"] == CHAT
     assert json.loads(module.STATE_PATH.read_text())["schema_version"] == 1
     assert module.main() == 0
-    assert json.loads(capsys.readouterr().out) == first
+    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
     assert ask.call_count == 1
     message(conn, "answer", is_from_me=1, reply_to_message_id="ask", content="4")
     assert module.main() == 0
     assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
     assert json.loads(module.STATE_PATH.read_text())["seen"] == {}
     assert list(module.STATE_PATH.parent.iterdir()) == [module.STATE_PATH]
-
-
-def test_disposition_ends_false_positive_wakes_even_when_context_changes(
-    checker, monkeypatch, capsys
-):
-    module, conn = checker
-    message(conn)
-    ask = stub(monkeypatch, module, ["unanswered"])
-    assert module.main() == 0
-    assert json.loads(capsys.readouterr().out)["wake_agent"] is True
-
-    # Claude declines the false positive without sending or reacting in chat.
-    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(["ask"])))
-    assert module.main(["handled"]) == 0
-    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
-    assert module.main() == 0
-    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
-    for index in range(21):
-        message(
-            conn,
-            f"later-{index:02}",
-            is_from_me=1,
-            content="Unrelated update",
-            timestamp="2025-01-02T11:51:00Z",
-        )
-    assert module.main() == 0
-    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
-    assert ask.call_count == 1
-    assert conn.execute("SELECT count(*) FROM reactions").fetchone()[0] == 0
-    conn.execute("DELETE FROM messages WHERE id = 'ask'")
-    conn.commit()
-    assert module.main() == 0
-    capsys.readouterr()
-    assert json.loads(module.STATE_PATH.read_text())["seen"] == {}
-
-
-def test_disposition_leaves_failed_answers_pending(checker, monkeypatch, capsys):
-    module, conn = checker
-    message(conn, "declined")
-    message(conn, "failed-answer")
-    ask = stub(monkeypatch, module, ["unanswered", "unanswered"])
-    assert module.main() == 0
-    capsys.readouterr()
-    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(["declined"])))
-    assert module.main(["handled"]) == 0
-    capsys.readouterr()
-    assert module.main() == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert [row["id"] for row in payload["data"]["messages"]] == ["failed-answer"]
-    assert ask.call_count == 2
-
-
-@pytest.mark.parametrize(
-    "failure", ["json", "shape", "empty", "id-type", "unknown", "choice", "chat", "command"]
-)
-def test_invalid_disposition_preserves_state_and_is_sanitized(
-    checker, monkeypatch, capsys, failure
-):
-    module, conn = checker
-    message(conn)
-    ask = stub(monkeypatch, module, ["cant_tell" if failure == "choice" else "unanswered"])
-    assert module.main() == 0
-    capsys.readouterr()
-    before = module.STATE_PATH.read_bytes()
-    inputs = {
-        "json": "private message text",
-        "shape": '{"id":"ask"}',
-        "empty": "[]",
-        "id-type": '["ask",7]',
-        "unknown": '["ask","private message text"]',
-    }
-    monkeypatch.setattr("sys.stdin", StringIO(inputs.get(failure, '["ask"]')))
-    if failure == "chat":
-        monkeypatch.setenv("NANOCLAW_CHAT_JID", "tg:-200")
-    assert module.main(["invalid" if failure == "command" else "handled"]) == 1
-    output = capsys.readouterr()
-    assert json.loads(output.out)["wake_agent"] is False
-    assert "private message text" not in output.out + output.err
-    assert module.STATE_PATH.read_bytes() == before
-    assert ask.call_count == 1
-
-
-def test_failed_disposition_write_keeps_drop_retryable(checker, monkeypatch, capsys):
-    module, conn = checker
-    message(conn)
-    ask = stub(monkeypatch, module, ["unanswered"])
-    assert module.main() == 0
-    capsys.readouterr()
-    before = module.STATE_PATH.read_bytes()
-    monkeypatch.setattr("sys.stdin", StringIO('["ask"]'))
-    with monkeypatch.context() as patch:
-        patch.setattr(module.os, "replace", Mock(side_effect=OSError("private message text")))
-        assert module.main(["handled"]) == 1
-    output = capsys.readouterr()
-    assert json.loads(output.out)["wake_agent"] is False
-    assert "private message text" not in output.out + output.err
-    assert module.STATE_PATH.read_bytes() == before
-    assert list(module.STATE_PATH.parent.iterdir()) == [module.STATE_PATH]
-    assert module.main() == 0
-    assert json.loads(capsys.readouterr().out)["wake_agent"] is True
-    assert ask.call_count == 1
 
 
 @pytest.mark.parametrize("existing", [False, True])

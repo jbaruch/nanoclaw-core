@@ -3,15 +3,8 @@
 `scripts/check-unanswered.py` is the sole reader/writer of
 `/workspace/state/check-unanswered/seen.json`. The host mounts `/workspace/state`
 per group (`jbaruch/nanoclaw`, `src/volume-mounts.ts`). The file is
-`{"schema_version": 1, "chat_jid": "<native chat>", "seen": {"<message id>": {"input": "<SHA-256>", "choice": "<validated Choice>"}}}`.
+`{"schema_version": 1, "chat_jid": "<native chat>", "seen": {"<message id>": "<validated Choice>"}}`.
 The file is one versioned record; `seen` entries belong to that record.
-An optional `handled: true` on a seen entry records Claude's final decision that
-the supplied message is already handled or needs no reply. Absence means pending.
-The owning script also accepts the literal argument `handled` with a nonempty
-JSON array of message IDs on stdin. It requires the current chat's valid state
-and an existing `unanswered` Choice for every ID, then atomically records the
-dispositions without querying the database or calling Jev. Other arguments,
-invalid JSON, unknown IDs and cross-chat state exit 1 without changing state.
 The reader accepts only integer version 1. Missing or unsupported versions,
 malformed JSON and another chat's state produce an unavailable result without
 rewriting the file. A missing file means no previous results. This script owns
@@ -21,24 +14,19 @@ when replacing an existing record. Writes replace the file atomically.
 Only checked candidates still present in
 the live query are retained.
 
-The digest covers the pinned model, question and bounded evidence. Unchanged
-evidence reuses the valid Choice; new text or context gets a new Choice.
-`unanswered` remains pending and is emitted again until the host records an
-answer or Claude records a final disposition. Handled entries stay silent even
-when following context changes and are pruned when the live candidate query no
-longer includes them. Emission is not acknowledgement. `cant_tell` stays silent;
-new evidence can resolve it. Invalid/unavailable Jev results are not cached,
+Each candidate gets one Jev Choice, recorded by message ID and never requested
+again while the candidate stays in the live query. Only a newly recorded
+`unanswered` wakes Claude, once. Invalid/unavailable Jev results are not recorded,
 never retried within a run, and never wake Claude. Diagnostics contain no
 provider body or message text.
 
 Evidence construction and its bounds live in `scripts/check-unanswered.py` —
 `evidence()` and the top-level constants. Capped evidence is classified with
 `complete: false`; Jev returns `cant_tell` when clipping prevents a reliable
-judgment. Valid Choices are cached and confirmed drops are emitted through the
-same path as complete evidence. A candidate whose minimal evidence still exceeds
+judgment. A candidate whose minimal evidence still exceeds
 the Jev input bound (for example escaped control characters) is skipped with a
 sanitized diagnostic, is never cached or woken, and does not block later candidates.
-Deferred drops remain eligible on the next run. The fixed
+A drop that does not fit the output bound is not recorded, so the next run offers it. The fixed
 Choice contract and owner issue citation live beside `QUESTION` in that script.
 
 This is a core per-group cadence, as required by the owner's

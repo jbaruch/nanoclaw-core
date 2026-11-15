@@ -40,6 +40,18 @@ def test_size_trim_preserves_reaction_upgrade_restriction():
     assert "only to upgrade" in rule
 
 
+def test_threading_bypasses_do_not_exempt_user_responses():
+    rule = (ROOT / "rules/telegram-protocol.md").read_text()
+    threading = rule.split("## Reply threading\n", 1)[1].split("\n## ", 1)[0]
+    bullets = [line for line in threading.splitlines() if line.startswith("- ")]
+    hook = next(line for line in bullets if "`reply-threading-enforcement`" in line)
+    assert all(term in hook for term in ("`pin: true`", "`sender`", "maintenance"))
+    responses = next(line for line in bullets if "Every response to a user message" in line)
+    assert "`reply_to`" in responses
+    assert '<message id="...">' in responses
+    assert "unsolicited output may stand alone" in responses
+
+
 def test_context_recovery_keeps_direct_helper_invocation():
     rule = (ROOT / "rules/context-recovery.md").read_text()
     assert (

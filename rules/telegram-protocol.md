@@ -13,10 +13,8 @@ alwaysApply: true
 
 ## Reply threading
 
-- `reply-threading-enforcement` PreToolUse hook denies standalone `send_message` while latest user inbound is unanswered. Reply using `reply_to` from `<message id="...">`.
-- Narrow exception for threading bypass:
-  1. `pin: true` status/briefing, `sender` set for a persona, or maintenance/scheduled session.
-- Every other user response requires `reply_to`; unsolicited output may stand alone.
+- `reply-threading-enforcement` PreToolUse hook denies standalone `send_message` while latest user inbound is unanswered; it does not deny `pin: true` status/briefing sends, `sender`-set persona sends or maintenance/scheduled sessions.
+- Every response to a user message uses `reply_to` from `<message id="...">`; unsolicited output may stand alone.
 
 ## Formatting
 

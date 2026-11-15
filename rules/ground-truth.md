@@ -37,3 +37,5 @@ alwaysApply: true
 
 - Verify recalled values against live sources before acting. If observation contradicts memory, trust observation and update memory.
 - Check inventory, past-action and current-state claims, and any answer that could change with the world. When in doubt, check first.
+
+- Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/ground-truth.md`.

@@ -23,3 +23,5 @@ alwaysApply: true
 - Use Telegram HTML, including `<tg-spoiler>`; bullets use `•`.
 - `no-markdown-in-send-message` PreToolUse hook rewrites `**bold**`→`<b>`, `[label](url)`→`<a href>`, backtick code→`<code>`, `- ` / `* ` bullets→`•`. Use raw `<i>`, `<u>`, `<s>`, `<pre>` with optional `<code class="language-python">` using actual language, `<blockquote>`, `<tg-spoiler>`.
 - In user data escape only `<`, `>`, `&` as `&lt;`, `&gt;`, `&amp;`. Leave quotes/apostrophes raw; never use `&quot;` / `&apos;`.
+
+- Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/telegram-protocol.md`.

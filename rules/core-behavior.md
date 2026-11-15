@@ -29,3 +29,5 @@ For inbound user tasks taking >2 seconds:
 ## Formatting
 
 - Use Telegram HTML, never Markdown; see `rules/telegram-protocol.md`.
+
+- Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/core-behavior.md`.

@@ -33,3 +33,9 @@ Exit codes: `0` — the store was read and `available` is the answer. `1` — th
 - Never read `home_tz` as a stand-in for where the operator is.
 
 Finish here.
+
+Proactive timing examples and current-zone contract, relative to this skill:
+
+```text
+references/temporal-awareness.md
+```

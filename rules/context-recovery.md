@@ -6,16 +6,16 @@ alwaysApply: true
 
 ## Recover History
 
-- Before claiming lost context or forgotten conversation in any language, query `/workspace/store/messages.db` with `Skill(skill: "query-history")`.
+- Before claiming lost context or forgotten conversation in any language, query `/workspace/store/messages.db` with the search helper:
+
+```bash
+python3 /home/node/.claude/skills/tessl__query-history/scripts/query-message-history.py --keyword "<text>"
+```
+
 - This gate fires before claiming lost context, not on every message.
-- Follow the skill's canonical helper input/output and failure contract; follow `rules/query-size-limits.md`, narrowing filters or paging truncated results.
-
-## Schema
-
-- `messages(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message)`
-- `chats(jid, name, last_message_time, channel, is_group)`
-- `is_from_me=1` means bot's own message; `sender` is stable numeric user ID. `sender_name` is `Display (@username)`; a username fragment matches `--sender`.
-- The helper reads only `messages`; its skill reference names the runtime owner and required reader fields.
+- Filters: `--sender <name>`, `--limit N` (default 20, cap 50), `--offset N`. Chat scope: `NANOCLAW_CHAT_JID`.
+- JSON stdout on exits 0/1; usage errors exit 2 with stderr only, never parse stdout. Follow `rules/query-size-limits.md`; narrow filters or page truncated results.
+- Detail: `/home/node/.claude/skills/tessl__query-history/references/context-recovery.md`.
 
 ## Compaction
 

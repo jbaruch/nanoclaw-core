@@ -35,7 +35,7 @@ tessl install jbaruch/nanoclaw-core
 | [now-vs-deadline](skills/now-vs-deadline/SKILL.md) | Deterministically compare a deadline against the current instant; mandated path for `temporal-awareness` |
 | [current-tz](skills/current-tz/SKILL.md) | Read the operator's current IANA zone from `tz_state`, resolved by the host from live location; the single shared reader, no home-zone guessing |
 
-Core rules keep binding constraints inline within 2,000 bytes each. The six trimmed rules link to verbatim source text in skill-owned references; skills link to the same references. [Issue #129](https://github.com/jbaruch/nanoclaw-core/issues/129) defines the scope; [the original rules](https://github.com/jbaruch/nanoclaw-core/tree/ed9964a027e24be77a7453db984470045b2e988c/rules) are the preservation source. `tests/test_rule_references.py` checks the byte limit, source hashes and reference links.
+Core rules keep binding constraints inline within 2,000 bytes each. The six trimmed rules link to skill-owned references containing only detail absent from the rule and owning SKILL.md; each clause has one home. Skills read those references for examples and context. [Issue #129](https://github.com/jbaruch/nanoclaw-core/issues/129) defines the scope; [Git history](https://github.com/jbaruch/nanoclaw-core/tree/ed9964a027e24be77a7453db984470045b2e988c/rules) retains the original rules. `tests/test_rule_references.py` checks the byte limit, reference existence and owning skill links.
 
 ## Philosophy
 

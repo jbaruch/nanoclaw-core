@@ -201,16 +201,21 @@ def check(conn, chat, now, seen):
             continue
         current[candidate["id"]] = {"input": digest, "choice": choice}
         if choice == "unanswered":
+            message = dict(candidate)
             # Reserve the truncation marker and stdout newline before adding
-            # a whole message. Deferred drops remain eligible next cadence.
+            # a message. An individually oversized drop travels by ID so the
+            # answering skill can read the original without blocking later drops.
             proposed = {
                 "wake_agent": True,
-                "data": {"chat_jid": chat, "messages": [*drops, dict(candidate)], "truncated": True},
+                "data": {"chat_jid": chat, "messages": [message], "truncated": True},
             }
+            if len(encoded(proposed)) + 1 > MAX_OUTPUT_BYTES:
+                message = {"id": candidate["id"]}
+            proposed["data"]["messages"] = [*drops, message]
             if len(encoded(proposed)) + 1 > MAX_OUTPUT_BYTES:
                 truncated = True
                 break
-            drops.append(dict(candidate))
+            drops.append(message)
     data = {"chat_jid": chat, "messages": drops} if drops else {}
     if truncated:
         data["truncated"] = True

@@ -307,6 +307,44 @@ def test_stdout_budget_defers_whole_drops_until_an_answer_frees_space(
     assert ask.call_count >= 3
 
 
+@pytest.mark.parametrize(
+    "content", ["Voice transcript: answer please. " * 1000, "🦀" * 8000, '"\\\n' * 5000]
+)
+def test_oversized_oldest_drop_is_retrievable_and_does_not_block_later_drop(
+    checker, monkeypatch, capsys, content
+):
+    module, conn = checker
+    message(conn, "a", content=content)
+    message(conn, "b", timestamp="2025-01-02T11:51:00Z")
+    # The same ID in another chat must not supply the original message.
+    message(conn, "a", chat_jid="tg:-200", content="Other chat")
+    ask = stub(monkeypatch, module, ["unanswered", "unanswered"])
+
+    for _ in range(2):
+        assert module.main() == 0
+        output = capsys.readouterr().out
+        payload = json.loads(output)
+        assert payload["wake_agent"] is True
+        assert len(output.encode("utf-8")) <= 25_000
+        assert payload["data"]["chat_jid"] == CHAT
+        oldest, later = payload["data"]["messages"]
+        assert oldest == {"id": "a"}
+        assert later["id"] == "b"
+        assert later["content"] == "AyeAye, what is 2 + 2?"
+        original = conn.execute(
+            "SELECT content FROM messages WHERE id = ? AND chat_jid = ? LIMIT 1",
+            (oldest["id"], payload["data"]["chat_jid"]),
+        ).fetchone()
+        assert original["content"] == content
+    # A failed answer reoffers both drops without more Jev calls.
+    assert ask.call_count == 2
+    for mid in ["a", "b"]:
+        message(conn, f"answer-{mid}", is_from_me=1, reply_to_message_id=mid, content="4")
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
+    assert ask.call_count == 2
+
+
 def test_context_uses_time_then_id_and_trusted_bot_flags(checker, monkeypatch):
     module, conn = checker
     message(conn, "b")

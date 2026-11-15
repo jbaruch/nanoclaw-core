@@ -43,7 +43,9 @@ clipped evidence marked `complete: false`.
 Stdout is one precheck JSON object: `wake_agent` is boolean and `data` is an
 object. Only a validated `unanswered` Choice yields `wake_agent: true`, with
 `data: {chat_jid, messages: [{id, sender_name, content, timestamp}]}` and optional
-`truncated: true` when output space defers whole messages. Other Choices and
+`truncated: true` when output space defers whole messages. An individually
+oversized message is supplied as `{id}` for same-chat retrieval before answering,
+as specified in `skills/check-unanswered/SKILL.md`. Other Choices and
 provider failures stay silent with `wake_agent: false`. Infrastructure failures
 exit 1 with a sanitized stderr diagnostic and `data.error`; they are unavailable
 results, never permission to answer. Successful runs exit 0.

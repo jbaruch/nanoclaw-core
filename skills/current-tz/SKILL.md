@@ -31,11 +31,6 @@ Exit codes: `0` — the store was read and `available` is the answer. `1` — th
 - Exit `1`, scheduling caller → treat it as a hard failure and surface the stderr diagnostic.
 - Exit `1`, phrasing surface → degrade as for `available: false`.
 - Never read `home_tz` as a stand-in for where the operator is.
+- For proactive timing examples or contract background, read `references/temporal-awareness.md` in this skill.
 
 Finish here.
-
-Proactive timing examples and current-zone contract, relative to this skill:
-
-```text
-references/temporal-awareness.md
-```

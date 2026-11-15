@@ -18,4 +18,4 @@ chats(jid, name, last_message_time, channel, is_group)
 On 2026-04-24 and again on 2026-04-25, an agent re-ran a JCON-2026 scrape
 from a post-compaction system-reminder block hours after the owner had completed
 it. The recurrence motivated [nanoclaw#104](https://github.com/jbaruch/nanoclaw/issues/104).
-See the [incident narrative](../../../docs/adr/2026-04-25-jcon-scrape-repeat-and-auto-compaction-kill.md).
+Full narrative: `docs/adr/2026-04-25-jcon-scrape-repeat-and-auto-compaction-kill.md`.

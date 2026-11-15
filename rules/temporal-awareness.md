@@ -6,7 +6,7 @@ alwaysApply: true
 
 ## Time and Context
 
-- Before scheduling/firing reminders, heartbeat/email alerts or proactive messages/suggestions, check UTC, owner's local time, calendar and travel context.
+- Before scheduling/firing reminders, heartbeat/email alerts, proactive messages/suggestions or framing events as past/present/future, check UTC, owner's local time, calendar and travel context.
 - Assess action window, ability, awareness and timing. If clearly useless, stay silent; if uncertain, weigh usefulness versus noise.
 - Compute past/future, deadlines and remaining time via `Skill(skill: "now-vs-deadline")`; resolve a timezone-aware instant first, follow its location-agnostic verdict, never eyeball.
 
@@ -14,7 +14,7 @@ alwaysApply: true
 
 - Use `jbaruch/nanoclaw-core`'s regular target `/home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py`; never container clock, handwritten SQL, copied reader or caller-selected path.
 - Production: no arguments/input; no `--now` clock substitution.
-- JSON stdout: `available,tz,local_now,local_date`. Usable: `true`, valid IANA zone and local instant/date. Unavailable: `false`, null projection fields. Failed reads grant no zone. Docstring owns exits/diagnostics.
+- JSON stdout: `available,tz,local_now,local_date`. Usable: `true`, valid IANA zone and local instant/date. Unavailable: `false`, null projection fields. Failed reads grant no zone. Docstring owns exits/diagnostics. Consumers retain unavailable/error handling required by their own workflow.
 - Detail: `/home/node/.claude/skills/tessl__current-tz/references/temporal-awareness.md`.
 - No timezone-write, scheduling, model, owner or delivery authority; no exception to later checks.
 

@@ -23,7 +23,7 @@ alwaysApply: true
 - Read relevance from the message, not a prompt gate verdict.
 - With Jev available, other non-main-chat messages passed its relevance gate.
 - During a Jev outage, untriggered chats deliver all messages unscored; delivery proves no relevance. Triggered chats deliver only direct address.
-- For messages not addressed directly, zero output is valid. Before silence, assess room questions, your work and topics you own.
+- For messages not addressed directly, zero output is valid. Before silence, work out what made it look relevant: a question to the room you can answer, something about you or your work, a topic you own.
 
 ## Chat mode
 

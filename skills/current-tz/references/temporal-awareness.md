@@ -16,17 +16,15 @@ would, rather than looking for a matching rule.
 
 ## Event framing and deadline resolution
 
-Apply the clock and context check to framing events as past, present or future
-(“upcoming”, “just happened”, “still time to act”) as well as proactive actions.
-For example, resolve `11:00 EDT` to `15:00 UTC` before
+Framing examples: “upcoming”, “just happened”, “still time to act”.
+Deadline example: resolve `11:00 EDT` to `15:00 UTC` before
 `Skill(skill: "now-vs-deadline")`.
 
 ## Current-zone contract detail
 
-Consumers retain the unavailable/error handling required by their own workflow.
 The accepted record version in the rule is not the database migration number.
 
 Source-authoring verification binds the trusted base manifest to this repository
 and reads the declared regular rule; it does not claim an unmerged contract is
-installed. See [the contract checks](../../../tests/test_current_tz_contract.py)
-and [reader tests](../../../tests/test_read_current_tz.py) for verification.
+installed. See `tests/test_current_tz_contract.py`
+and `tests/test_read_current_tz.py` for verification.

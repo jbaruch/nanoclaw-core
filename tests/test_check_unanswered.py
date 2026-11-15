@@ -109,8 +109,20 @@ def test_candidate_filters_are_chat_scoped_and_include_pool_bots(checker):
     )
     assert {r["id"] for r in module.candidates(conn, CHAT, NOW)} == {
         "drop",
+        "reacted",
         "human-reacted",
     }
+
+
+def test_bot_acknowledgement_does_not_hide_a_dropped_request(checker, monkeypatch):
+    module, conn = checker
+    message(conn)
+    conn.execute("INSERT INTO reactions VALUES (?, ?, ?)", ("ask", CHAT, "bot@telegram"))
+    ask = stub(monkeypatch, module, ["unanswered"])
+    payload, _ = module.check(conn, CHAT, NOW, {})
+    assert payload["wake_agent"] is True
+    assert [m["id"] for m in payload["data"]["messages"]] == ["ask"]
+    assert ask.call_count == 1
 
 
 @pytest.mark.parametrize("choice", ["addressed_inline", "cant_tell"])
@@ -164,10 +176,10 @@ def test_more_than_one_sql_page_does_not_starve_later_candidates(checker, monkey
     module, conn = checker
     for index in range(55):
         message(conn, f"{index:03}")
-    ask = stub(monkeypatch, module, ["cant_tell"] * 54 + ["unanswered"])
+    ask = stub(monkeypatch, module, ["cant_tell"] * 20 + ["unanswered"])
     payload, _ = module.check(conn, CHAT, NOW, {})
     assert [m["id"] for m in payload["data"]["messages"]] == ["054"]
-    assert ask.call_count == 55
+    assert ask.call_count == 21
 
 
 @pytest.mark.parametrize("overflow", ["count", "bytes", "candidate"])
@@ -182,13 +194,69 @@ def test_candidate_and_following_window_are_count_and_byte_bounded(checker, monk
             timestamp="2025-01-02T11:51:00Z",
             is_from_me=1,
         )
-    ask = stub(monkeypatch, module, ["cant_tell"])
-    payload, _ = module.check(conn, CHAT, NOW, {})
-    state = ask.call_args.args[0]
+    ask = stub(monkeypatch, module, ["unanswered"])
+    candidate = next(module.candidates(conn, CHAT, NOW))
+    state = module.evidence(conn, CHAT, candidate)
+    payload, seen = module.check(conn, CHAT, NOW, {})
     assert len(json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode()) <= 16_384
     assert len(state["following_messages"]) <= 20
     assert state["complete"] is False
     assert payload == {"wake_agent": False, "data": {}}
+    assert seen == {}
+    ask.assert_not_called()
+
+
+def test_omitted_inline_answer_cannot_wake_from_a_cached_drop(checker, monkeypatch):
+    module, conn = checker
+    message(conn)
+    for index in range(21):
+        message(
+            conn,
+            f"later-{index:02}",
+            content="4" if index == 20 else "Unrelated update",
+            timestamp="2025-01-02T11:51:00Z",
+            is_from_me=1,
+        )
+    state = module.evidence(conn, CHAT, next(module.candidates(conn, CHAT, NOW)))
+    digest = module.hashlib.sha256(
+        module.encoded([module.MODEL, module.QUESTION, state])
+    ).hexdigest()
+    ask = stub(monkeypatch, module, [])
+    payload, seen = module.check(
+        conn, CHAT, NOW, {"ask": {"input": digest, "choice": "unanswered"}}
+    )
+    assert payload == {"wake_agent": False, "data": {}}
+    assert seen == {}
+    ask.assert_not_called()
+
+
+@pytest.mark.parametrize("content", ["x" * 3200, "🦀" * 800, '"\\\n' * 500])
+def test_stdout_budget_defers_whole_drops_until_an_answer_frees_space(
+    checker, monkeypatch, capsys, content
+):
+    module, conn = checker
+    # A smaller budget exercises the boundary with complete, bounded evidence.
+    monkeypatch.setattr(module, "MAX_OUTPUT_BYTES", 5000, raising=False)
+    for mid in ["a", "b", "c"]:
+        message(conn, mid, content=content)
+    ask = stub(monkeypatch, module, ["unanswered"] * 6)
+    assert module.main() == 0
+    output = capsys.readouterr().out
+    first = json.loads(output)
+    assert len(output.encode("utf-8")) <= 5000
+    assert first["data"]["truncated"] is True
+    assert [m["id"] for m in first["data"]["messages"]] == ["a"]
+    assert first["data"]["messages"][0]["content"] == content
+    # Deferred messages are still offered after the host records an answer.
+    for previous, mid in [("a", "b"), ("b", "c")]:
+        message(conn, f"answer-{previous}", is_from_me=1, reply_to_message_id=previous)
+        assert module.main() == 0
+        output = capsys.readouterr().out
+        payload = json.loads(output)
+        assert len(output.encode("utf-8")) <= 5000
+        assert [m["id"] for m in payload["data"]["messages"]] == [mid]
+        assert payload["data"]["messages"][0]["content"] == content
+    assert ask.call_count >= 3
 
 
 def test_context_uses_time_then_id_and_trusted_bot_flags(checker, monkeypatch):
@@ -339,6 +407,7 @@ def test_main_persists_native_chat_state_and_emits_precheck_json(checker, monkey
     assert first["wake_agent"] is True
     assert module.STATE_PATH.is_file()
     assert json.loads(module.STATE_PATH.read_text())["chat_jid"] == CHAT
+    assert json.loads(module.STATE_PATH.read_text())["schema_version"] == 1
     assert module.main() == 0
     assert json.loads(capsys.readouterr().out) == first
     assert ask.call_count == 1
@@ -361,14 +430,14 @@ def test_main_infrastructure_errors_never_wake_or_create_a_db(
     elif failure == "missing_db":
         monkeypatch.setenv("NANOCLAW_DB", str(tmp_path / "missing.db"))
     elif failure == "schema":
-        conn.execute("DROP TABLE reactions")
+        conn.execute("DROP TABLE messages")
         conn.commit()
     elif failure in {"state_json", "state_chat"}:
         module.STATE_PATH.parent.mkdir()
         module.STATE_PATH.write_text(
             "private malformed text"
             if failure == "state_json"
-            else json.dumps({"chat_jid": "tg:-200", "seen": {}})
+            else json.dumps({"schema_version": 1, "chat_jid": "tg:-200", "seen": {}})
         )
     elif failure == "write":
         module.STATE_PATH.parent.write_text("not a directory")
@@ -378,3 +447,24 @@ def test_main_infrastructure_errors_never_wake_or_create_a_db(
     assert "verify native" in captured.err
     assert "private malformed" not in captured.err
     assert not (tmp_path / "missing.db").exists()
+
+
+@pytest.mark.parametrize("version", [None, 0, 2, True, "1"])
+def test_unaccepted_state_version_is_unavailable_before_classification(
+    checker, monkeypatch, capsys, version
+):
+    module, conn = checker
+    message(conn)
+    saved = {"chat_jid": CHAT, "seen": {}}
+    if version is not None:
+        saved["schema_version"] = version
+    module.STATE_PATH.parent.mkdir()
+    original = json.dumps(saved)
+    module.STATE_PATH.write_text(original)
+    ask = stub(monkeypatch, module, ["unanswered"])
+    assert module.main() == 1
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["wake_agent"] is False
+    assert "seen-state JSON" in captured.err
+    assert module.STATE_PATH.read_text() == original
+    ask.assert_not_called()

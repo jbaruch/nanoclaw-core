@@ -50,6 +50,7 @@ QUESTION = {
 }
 MAX_CONTEXT = 20
 MAX_STATE_BYTES = 16_384
+MAX_OUTPUT_BYTES = 25_000
 
 
 def encoded(value):
@@ -72,11 +73,6 @@ def candidates(conn, chat, now):
                   AND (r.is_from_me = 1 OR r.is_bot_message = 1)
                   AND (r.reply_to_message_id = m.id
                        OR r.reply_to_message_id = m.telegram_message_id)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM reactions rc WHERE rc.message_id = m.id
-                  AND rc.message_chat_jid = m.chat_jid
-                  AND rc.reactor_jid = 'bot@telegram'
               )
             ORDER BY julianday(m.timestamp), m.id LIMIT 50 OFFSET ?
             """,
@@ -178,8 +174,11 @@ def classify(state):
 
 def check(conn, chat, now, seen):
     drops, current = [], {}
+    truncated = False
     for candidate in candidates(conn, chat, now):
         state = evidence(conn, chat, candidate)
+        if not state["complete"]:
+            continue
         digest = hashlib.sha256(encoded([MODEL, QUESTION, state])).hexdigest()
         prior = seen.get(candidate["id"], {})
         if isinstance(prior, dict) and prior.get("input") == digest:
@@ -200,8 +199,19 @@ def check(conn, chat, now, seen):
             continue
         current[candidate["id"]] = {"input": digest, "choice": choice}
         if choice == "unanswered":
+            # Reserve the truncation marker and stdout newline before adding
+            # a whole message. Deferred drops remain eligible next cadence.
+            proposed = {
+                "wake_agent": True,
+                "data": {"chat_jid": chat, "messages": [*drops, dict(candidate)], "truncated": True},
+            }
+            if len(encoded(proposed)) + 1 > MAX_OUTPUT_BYTES:
+                truncated = True
+                break
             drops.append(dict(candidate))
     data = {"chat_jid": chat, "messages": drops} if drops else {}
+    if truncated:
+        data["truncated"] = True
     return {"wake_agent": bool(drops), "data": data}, current
 
 
@@ -215,6 +225,8 @@ def main():
             saved = json.loads(STATE_PATH.read_text())
             if (
                 not isinstance(saved, dict)
+                or type(saved.get("schema_version")) is not int
+                or saved["schema_version"] != 1
                 or saved.get("chat_jid") != chat
                 or not isinstance(saved.get("seen"), dict)
             ):
@@ -233,7 +245,7 @@ def main():
         with tempfile.NamedTemporaryFile(mode="wb", dir=STATE_PATH.parent, delete=False) as out:
             temporary = Path(out.name)
             try:
-                out.write(encoded({"chat_jid": chat, "seen": seen}))
+                out.write(encoded({"schema_version": 1, "chat_jid": chat, "seen": seen}))
                 out.flush()
                 os.fsync(out.fileno())
                 os.replace(temporary, STATE_PATH)
@@ -248,7 +260,7 @@ def main():
         print(error, file=sys.stderr)
         print(json.dumps({"wake_agent": False, "data": {"error": error}}))
         return 1
-    print(json.dumps(payload, ensure_ascii=False))
+    print(encoded(payload).decode("utf-8"))
     return 0
 
 

@@ -5,6 +5,10 @@ The host supplies NANOCLAW_CHAT_JID, its native messages.db (filtered for
 untrusted groups), and a per-group /workspace/state mount. Never widen either
 scope. OneCLI supplies TypeSafe authentication through HTTPS_PROXY/the mounted
 CA; this script holds no key. No request retries or alternate classifiers.
+
+No arguments: run the precheck. `handled`: read a nonempty JSON list of supplied
+message IDs from stdin and record Claude's final no-reply decisions in existing
+seen-state. This mode neither reads messages.db nor calls Jev or chat tools.
 """
 
 import hashlib
@@ -180,9 +184,12 @@ def check(conn, chat, now, seen):
     drops, current = [], {}
     truncated = False
     for candidate in candidates(conn, chat, now):
+        prior = seen.get(candidate["id"], {})
+        if isinstance(prior, dict) and prior.get("handled") is True:
+            current[candidate["id"]] = prior
+            continue
         state = evidence(conn, chat, candidate)
         digest = hashlib.sha256(encoded([MODEL, QUESTION, state])).hexdigest()
-        prior = seen.get(candidate["id"], {})
         if isinstance(prior, dict) and prior.get("input") == digest:
             choice = prior.get("choice")
         else:
@@ -222,8 +229,10 @@ def check(conn, chat, now, seen):
     return {"wake_agent": bool(drops), "data": data}, current
 
 
-def main():
+def main(args=()):
     try:
+        if args and list(args) != ["handled"]:
+            raise ValueError("Run without arguments, or use handled with message IDs on stdin")
         chat = os.environ.get("NANOCLAW_CHAT_JID")
         if not chat:
             raise ValueError("NANOCLAW_CHAT_JID required; run in the host's native group context")
@@ -241,13 +250,24 @@ def main():
                     "Invalid seen-state; inspect /workspace/state/check-unanswered/seen.json"
                 )
             seen = saved["seen"]
-        db = Path(os.environ.get("NANOCLAW_DB", "/workspace/store/messages.db"))
-        conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
-        conn.row_factory = sqlite3.Row
-        try:
-            payload, seen = check(conn, chat, datetime.now(timezone.utc), seen)
-        finally:
-            conn.close()
+        if args:
+            handled = json.load(sys.stdin)
+            if not isinstance(handled, list) or not handled:
+                raise ValueError("handled requires a nonempty JSON list of message IDs")
+            for mid in handled:
+                prior = seen.get(mid) if isinstance(mid, str) else None
+                if not isinstance(prior, dict) or prior.get("choice") != "unanswered":
+                    raise ValueError("handled requires a cached unanswered message in this chat")
+                prior["handled"] = True
+            payload = {"wake_agent": False, "data": {}}
+        else:
+            db = Path(os.environ.get("NANOCLAW_DB", "/workspace/store/messages.db"))
+            conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+            conn.row_factory = sqlite3.Row
+            try:
+                payload, seen = check(conn, chat, datetime.now(timezone.utc), seen)
+            finally:
+                conn.close()
         STATE_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         STATE_PATH.parent.chmod(0o700)
         with tempfile.NamedTemporaryFile(mode="wb", dir=STATE_PATH.parent, delete=False) as out:
@@ -263,7 +283,8 @@ def main():
         # Do not echo untrusted DB/state/provider text through scheduler notices.
         error = (
             f"check-unanswered unavailable ({type(exc).__name__}); verify native "
-            "NANOCLAW_CHAT_JID, messages.db schema/read access and seen-state JSON"
+            "NANOCLAW_CHAT_JID, messages.db schema/read access, seen-state JSON "
+            "and handled message-ID JSON input"
         )
         print(error, file=sys.stderr)
         print(json.dumps({"wake_agent": False, "data": {"error": error}}))
@@ -273,4 +294,4 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

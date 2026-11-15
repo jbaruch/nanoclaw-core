@@ -5,6 +5,7 @@ import os
 import sqlite3
 import stat
 from datetime import UTC, datetime
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -502,6 +503,107 @@ def test_main_persists_native_chat_state_and_emits_precheck_json(checker, monkey
     assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
     assert json.loads(module.STATE_PATH.read_text())["seen"] == {}
     assert list(module.STATE_PATH.parent.iterdir()) == [module.STATE_PATH]
+
+
+def test_disposition_ends_false_positive_wakes_even_when_context_changes(
+    checker, monkeypatch, capsys
+):
+    module, conn = checker
+    message(conn)
+    ask = stub(monkeypatch, module, ["unanswered"])
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out)["wake_agent"] is True
+
+    # Claude declines the false positive without sending or reacting in chat.
+    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(["ask"])))
+    assert module.main(["handled"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
+    for index in range(21):
+        message(
+            conn,
+            f"later-{index:02}",
+            is_from_me=1,
+            content="Unrelated update",
+            timestamp="2025-01-02T11:51:00Z",
+        )
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
+    assert ask.call_count == 1
+    assert conn.execute("SELECT count(*) FROM reactions").fetchone()[0] == 0
+    conn.execute("DELETE FROM messages WHERE id = 'ask'")
+    conn.commit()
+    assert module.main() == 0
+    capsys.readouterr()
+    assert json.loads(module.STATE_PATH.read_text())["seen"] == {}
+
+
+def test_disposition_leaves_failed_answers_pending(checker, monkeypatch, capsys):
+    module, conn = checker
+    message(conn, "declined")
+    message(conn, "failed-answer")
+    ask = stub(monkeypatch, module, ["unanswered", "unanswered"])
+    assert module.main() == 0
+    capsys.readouterr()
+    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(["declined"])))
+    assert module.main(["handled"]) == 0
+    capsys.readouterr()
+    assert module.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [row["id"] for row in payload["data"]["messages"]] == ["failed-answer"]
+    assert ask.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "failure", ["json", "shape", "empty", "id-type", "unknown", "choice", "chat", "command"]
+)
+def test_invalid_disposition_preserves_state_and_is_sanitized(
+    checker, monkeypatch, capsys, failure
+):
+    module, conn = checker
+    message(conn)
+    ask = stub(monkeypatch, module, ["cant_tell" if failure == "choice" else "unanswered"])
+    assert module.main() == 0
+    capsys.readouterr()
+    before = module.STATE_PATH.read_bytes()
+    inputs = {
+        "json": "private message text",
+        "shape": '{"id":"ask"}',
+        "empty": "[]",
+        "id-type": '["ask",7]',
+        "unknown": '["ask","private message text"]',
+    }
+    monkeypatch.setattr("sys.stdin", StringIO(inputs.get(failure, '["ask"]')))
+    if failure == "chat":
+        monkeypatch.setenv("NANOCLAW_CHAT_JID", "tg:-200")
+    assert module.main(["invalid" if failure == "command" else "handled"]) == 1
+    output = capsys.readouterr()
+    assert json.loads(output.out)["wake_agent"] is False
+    assert "private message text" not in output.out + output.err
+    assert module.STATE_PATH.read_bytes() == before
+    assert ask.call_count == 1
+
+
+def test_failed_disposition_write_keeps_drop_retryable(checker, monkeypatch, capsys):
+    module, conn = checker
+    message(conn)
+    ask = stub(monkeypatch, module, ["unanswered"])
+    assert module.main() == 0
+    capsys.readouterr()
+    before = module.STATE_PATH.read_bytes()
+    monkeypatch.setattr("sys.stdin", StringIO('["ask"]'))
+    with monkeypatch.context() as patch:
+        patch.setattr(module.os, "replace", Mock(side_effect=OSError("private message text")))
+        assert module.main(["handled"]) == 1
+    output = capsys.readouterr()
+    assert json.loads(output.out)["wake_agent"] is False
+    assert "private message text" not in output.out + output.err
+    assert module.STATE_PATH.read_bytes() == before
+    assert list(module.STATE_PATH.parent.iterdir()) == [module.STATE_PATH]
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out)["wake_agent"] is True
+    assert ask.call_count == 1
 
 
 @pytest.mark.parametrize("existing", [False, True])

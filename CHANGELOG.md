@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.162 — 2026-11-15
+
+- chore: refresh the Tessl-generated ignore block (#133)
+
 ## 0.1.157 — 2026-10-29
 
 ### Declare the current-zone reader contract for script consumers

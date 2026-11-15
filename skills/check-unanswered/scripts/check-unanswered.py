@@ -188,7 +188,14 @@ def check(conn, chat, now, seen):
         if isinstance(prior, dict) and prior.get("handled") is True:
             current[candidate["id"]] = prior
             continue
-        state = evidence(conn, chat, candidate)
+        try:
+            state = evidence(conn, chat, candidate)
+        except ValueError:
+            print(
+                "check-unanswered: candidate evidence exceeds Jev input bound; skipped",
+                file=sys.stderr,
+            )
+            continue
         digest = hashlib.sha256(encoded([MODEL, QUESTION, state])).hexdigest()
         if isinstance(prior, dict) and prior.get("input") == digest:
             choice = prior.get("choice")

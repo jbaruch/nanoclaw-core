@@ -35,7 +35,10 @@ Evidence construction and its bounds live in `scripts/check-unanswered.py` —
 `evidence()` and the top-level constants. Capped evidence is classified with
 `complete: false`; Jev returns `cant_tell` when clipping prevents a reliable
 judgment. Valid Choices are cached and confirmed drops are emitted through the
-same path as complete evidence. Deferred drops remain eligible on the next run. The fixed
+same path as complete evidence. A candidate whose minimal evidence still exceeds
+the Jev input bound (for example escaped control characters) is skipped with a
+sanitized diagnostic, is never cached or woken, and does not block later candidates.
+Deferred drops remain eligible on the next run. The fixed
 Choice contract and owner issue citation live beside `QUESTION` in that script.
 
 This is a core per-group cadence, as required by the owner's

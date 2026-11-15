@@ -485,6 +485,39 @@ def test_network_failure_retries_next_run_without_hiding_other_drops(checker, mo
     assert ask.call_count == 3
 
 
+def test_oversized_evidence_does_not_hide_later_drop(checker, monkeypatch, capsys):
+    module, conn = checker
+    oversized = "\x01" * 3000
+    ordinary = "AyeAye, what is 2 + 2?"
+    message(
+        conn,
+        "oversized",
+        sender_name="Eve",
+        content=oversized,
+        timestamp="2025-01-02T11:40:00Z",
+    )
+    message(conn, content=ordinary)
+    ask = stub(monkeypatch, module, ["unanswered"])
+
+    assert module.main() == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["wake_agent"] is True
+    assert [m["id"] for m in payload["data"]["messages"]] == ["ask"]
+    assert ask.call_count == 1
+    assert "oversized" not in json.loads(module.STATE_PATH.read_text())["seen"]
+    assert "candidate evidence exceeds Jev input bound; skipped" in captured.err
+    assert oversized not in captured.out + captured.err
+    assert "\\u0001" not in captured.out + captured.err
+    assert "Eve" not in captured.out + captured.err
+    assert ordinary not in captured.err
+    assert "Ada" not in captured.err
+
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out) == payload
+    assert ask.call_count == 1
+
+
 def test_main_persists_native_chat_state_and_emits_precheck_json(checker, monkeypatch, capsys):
     module, conn = checker
     message(conn)

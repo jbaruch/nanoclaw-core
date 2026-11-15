@@ -8,7 +8,7 @@ alwaysApply: true
 
 - Runtime `react-first` UserPromptSubmit hook emits 👀 only for addressed messages; no manual receipt ACK needed.
 - Jev-passed unaddressed messages get no runtime reaction. If answering, use 👍 for long tasks per `rules/core-behavior.md`; if silent, add none.
-- After inspection, upgrade reactions: 👌 got it/working, 👍 acknowledged/done, 🔥 urgent, 🤔 thinking/investigating, 🤝 done/confirmed. Each call replaces the prior emoji; unsupported emoji fall back to 👍.
+- On addressed messages, use `react_to_message` only to upgrade after inspection: 👌 got it/working, 👍 acknowledged/done, 🔥 urgent, 🤔 thinking/investigating, 🤝 done/confirmed. Each call replaces the prior emoji; unsupported emoji fall back to 👍.
 - React → work → deliver; never send "I'm starting now" text.
 
 ## Reply threading

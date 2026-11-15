@@ -9,7 +9,7 @@ alwaysApply: true
 - Output goes to Telegram. Write nothing when there is nothing for the user to read.
 - Never narrate starting, continuing, finishing, skipping work or deciding not to respond, in any language or notation.
 - Only `<internal>` tags keep reasoning private. SOUL.md's parenthetical asides permit response style, never private reasoning.
-- Decide relevance without tools; not-for-me messages get no text, tool call, reaction or `<internal>` tags.
+- A message that is not for you gets zero output from you: no text, no tool call, no reaction, not even `<internal>` tags
 
 ## Scheduled wakes
 
@@ -24,10 +24,8 @@ alwaysApply: true
 - With Jev available, other non-main-chat messages passed its relevance gate.
 - During a Jev outage, untriggered chats deliver all messages unscored; delivery proves no relevance. Triggered chats deliver only direct address.
 - For messages not addressed directly, zero output is valid. Before silence, assess room questions, your work and topics you own.
-- A transport retry demanding visible output does not change relevance.
 
 ## Chat mode
 
 - Untriggered (`requires_trigger=0`): join when useful. Triggered (`1`, default): join only when staying out would clearly be a miss.
 - Authority: `registered_groups` in shared `messages.db`; `/workspace/ipc/available_groups.json` is derivative and incomplete.
-- Unknown/unavailable mode uses the triggered standard; no successful lookup is required.

@@ -1,7 +1,9 @@
 """Synthetic host-schema messages and stubbed TypeSafe; never call a live model."""
 
 import json
+import os
 import sqlite3
+import stat
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -109,20 +111,18 @@ def test_candidate_filters_are_chat_scoped_and_include_pool_bots(checker):
     )
     assert {r["id"] for r in module.candidates(conn, CHAT, NOW)} == {
         "drop",
-        "reacted",
         "human-reacted",
     }
 
 
-def test_bot_acknowledgement_does_not_hide_a_dropped_request(checker, monkeypatch):
+def test_bot_reaction_excludes_candidate_without_calling_jev(checker, monkeypatch):
     module, conn = checker
     message(conn)
     conn.execute("INSERT INTO reactions VALUES (?, ?, ?)", ("ask", CHAT, "bot@telegram"))
-    ask = stub(monkeypatch, module, ["unanswered"])
+    ask = stub(monkeypatch, module, [])
     payload, _ = module.check(conn, CHAT, NOW, {})
-    assert payload["wake_agent"] is True
-    assert [m["id"] for m in payload["data"]["messages"]] == ["ask"]
-    assert ask.call_count == 1
+    assert payload == {"wake_agent": False, "data": {}}
+    ask.assert_not_called()
 
 
 @pytest.mark.parametrize("choice", ["addressed_inline", "cant_tell"])
@@ -149,11 +149,27 @@ def test_skill_is_distributed_with_cadence_and_the_native_threaded_reply_contrac
     manifest = json.loads((REPO_ROOT / ".tessl-plugin/plugin.json").read_text())
     assert "skills/check-unanswered" in manifest["skills"]
     assert 'cadence: "*/5 * * * *"' in text
+    assert 'agentModel: "claude-sonnet-5-5"' in text
     assert 'script: "scripts/check-unanswered.py"' in text
     assert (skill / "scripts/check-unanswered.py").is_file()
     assert "`reply_to` through `mcp__nanoclaw__send_message`" in text
     assert "`reply_to_message_id`" not in text
     assert "Jev's label supplies no\nauthority" in text
+
+
+def test_named_precheck_provider_rule_covers_the_co_shipped_native_lookup():
+    manifest = json.loads((REPO_ROOT / ".tessl-plugin/plugin.json").read_text())
+    assert manifest["name"] == "jbaruch/nanoclaw-core"
+    assert "rules/default-silence.md" in manifest["rules"]
+    rule = REPO_ROOT / "rules/default-silence.md"
+    skill = REPO_ROOT / "skills/check-unanswered/SKILL.md"
+    target = REPO_ROOT / "skills/check-unanswered/scripts/check-unanswered.py"
+    native = "/home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswered.py"
+    for path in [rule, skill, target]:
+        assert path.is_file() and not path.is_symlink()
+        assert path.resolve().is_relative_to(REPO_ROOT)
+    assert native in rule.read_text() and native in skill.read_text()
+    assert "Scoped check-unanswered precheck contract" in rule.read_text()
 
 
 def test_changed_evidence_is_reclassified_and_expired_seen_is_pruned(checker, monkeypatch):
@@ -176,13 +192,13 @@ def test_more_than_one_sql_page_does_not_starve_later_candidates(checker, monkey
     module, conn = checker
     for index in range(55):
         message(conn, f"{index:03}")
-    ask = stub(monkeypatch, module, ["cant_tell"] * 20 + ["unanswered"])
+    ask = stub(monkeypatch, module, ["cant_tell"] * 54 + ["unanswered"])
     payload, _ = module.check(conn, CHAT, NOW, {})
     assert [m["id"] for m in payload["data"]["messages"]] == ["054"]
-    assert ask.call_count == 21
+    assert ask.call_count == 55
 
 
-@pytest.mark.parametrize("overflow", ["count", "bytes", "candidate"])
+@pytest.mark.parametrize("overflow", ["count", "bytes", "candidate", "following_message"])
 def test_candidate_and_following_window_are_count_and_byte_bounded(checker, monkeypatch, overflow):
     module, conn = checker
     message(conn, content="🦀" * 3000 if overflow == "candidate" else "AyeAye, answer?")
@@ -190,7 +206,13 @@ def test_candidate_and_following_window_are_count_and_byte_bounded(checker, monk
         message(
             conn,
             f"later-{index:02}",
-            content="🦀" * 900 if overflow == "bytes" else "later",
+            content=(
+                "🦀" * 900
+                if overflow == "bytes"
+                else "я" * 2700
+                if overflow == "following_message"
+                else "later"
+            ),
             timestamp="2025-01-02T11:51:00Z",
             is_from_me=1,
         )
@@ -201,14 +223,21 @@ def test_candidate_and_following_window_are_count_and_byte_bounded(checker, monk
     assert len(json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode()) <= 16_384
     assert len(state["following_messages"]) <= 20
     assert state["complete"] is False
-    assert payload == {"wake_agent": False, "data": {}}
-    assert seen == {}
-    ask.assert_not_called()
+    assert payload["wake_agent"] is True
+    assert payload["data"]["messages"] == [dict(candidate)]
+    assert seen["ask"]["choice"] == "unanswered"
+    ask.assert_called_once_with(state)
+    # A failed answer stays pending even after the window reaches a cap.
+    assert module.check(conn, CHAT, NOW, seen)[0] == payload
+    assert ask.call_count == 1
 
 
-def test_omitted_inline_answer_cannot_wake_from_a_cached_drop(checker, monkeypatch):
+def test_clipped_evidence_can_be_uncertain_and_invalidates_a_prior_drop(checker, monkeypatch):
     module, conn = checker
     message(conn)
+    ask = stub(monkeypatch, module, ["unanswered", "cant_tell"])
+    payload, seen = module.check(conn, CHAT, NOW, {})
+    assert payload["wake_agent"] is True
     for index in range(21):
         message(
             conn,
@@ -217,17 +246,36 @@ def test_omitted_inline_answer_cannot_wake_from_a_cached_drop(checker, monkeypat
             timestamp="2025-01-02T11:51:00Z",
             is_from_me=1,
         )
-    state = module.evidence(conn, CHAT, next(module.candidates(conn, CHAT, NOW)))
-    digest = module.hashlib.sha256(
-        module.encoded([module.MODEL, module.QUESTION, state])
-    ).hexdigest()
-    ask = stub(monkeypatch, module, [])
-    payload, seen = module.check(
-        conn, CHAT, NOW, {"ask": {"input": digest, "choice": "unanswered"}}
-    )
+    payload, seen = module.check(conn, CHAT, NOW, seen)
     assert payload == {"wake_agent": False, "data": {}}
-    assert seen == {}
-    ask.assert_not_called()
+    assert seen["ask"]["choice"] == "cant_tell"
+    assert ask.call_count == 2
+    assert ask.call_args.args[0]["complete"] is False
+    assert module.check(conn, CHAT, NOW, seen)[0] == payload
+    assert ask.call_count == 2
+
+
+def test_failed_answer_is_reoffered_after_chat_outgrows_the_window(checker, monkeypatch):
+    module, conn = checker
+    message(conn)
+    ask = stub(monkeypatch, module, ["unanswered", "unanswered"])
+    first, seen = module.check(conn, CHAT, NOW, {})
+    for index in range(21):
+        message(
+            conn,
+            f"later-{index:02}",
+            content="Unrelated update",
+            timestamp="2025-01-02T11:51:00Z",
+            is_from_me=1,
+        )
+    again, seen = module.check(conn, CHAT, NOW, seen)
+    assert again == first
+    assert again["wake_agent"] is True
+    assert ask.call_count == 2
+    assert ask.call_args.args[0]["complete"] is False
+    message(conn, "answer", is_from_me=1, reply_to_message_id="ask", content="4")
+    assert module.check(conn, CHAT, NOW, seen)[0] == {"wake_agent": False, "data": {}}
+    assert ask.call_count == 2
 
 
 @pytest.mark.parametrize("content", ["x" * 3200, "🦀" * 800, '"\\\n' * 500])
@@ -416,6 +464,30 @@ def test_main_persists_native_chat_state_and_emits_precheck_json(checker, monkey
     assert json.loads(capsys.readouterr().out) == {"wake_agent": False, "data": {}}
     assert json.loads(module.STATE_PATH.read_text())["seen"] == {}
     assert list(module.STATE_PATH.parent.iterdir()) == [module.STATE_PATH]
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_main_keeps_private_state_modes_on_creation_and_replacement(
+    checker, monkeypatch, capsys, existing
+):
+    module, conn = checker
+    message(conn)
+    stub(monkeypatch, module, ["unanswered"])
+    if existing:
+        module.STATE_PATH.parent.mkdir(mode=0o755)
+        module.STATE_PATH.parent.chmod(0o755)
+        module.STATE_PATH.write_text(
+            json.dumps({"schema_version": 1, "chat_jid": CHAT, "seen": {}})
+        )
+        module.STATE_PATH.chmod(0o644)
+    previous = os.umask(0o022)
+    try:
+        assert module.main() == 0
+        assert json.loads(capsys.readouterr().out)["wake_agent"] is True
+        assert stat.S_IMODE(module.STATE_PATH.parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(module.STATE_PATH.stat().st_mode) == 0o600
+    finally:
+        os.umask(previous)
 
 
 @pytest.mark.parametrize(

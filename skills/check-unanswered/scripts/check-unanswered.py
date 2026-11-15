@@ -74,6 +74,10 @@ def candidates(conn, chat, now):
                   AND (r.reply_to_message_id = m.id
                        OR r.reply_to_message_id = m.telegram_message_id)
               )
+              AND NOT EXISTS (
+                SELECT 1 FROM reactions r WHERE r.message_chat_jid = m.chat_jid
+                  AND r.message_id = m.id AND r.reactor_jid = 'bot@telegram'
+              )
             ORDER BY julianday(m.timestamp), m.id LIMIT 50 OFFSET ?
             """,
             (
@@ -177,8 +181,6 @@ def check(conn, chat, now, seen):
     truncated = False
     for candidate in candidates(conn, chat, now):
         state = evidence(conn, chat, candidate)
-        if not state["complete"]:
-            continue
         digest = hashlib.sha256(encoded([MODEL, QUESTION, state])).hexdigest()
         prior = seen.get(candidate["id"], {})
         if isinstance(prior, dict) and prior.get("input") == digest:
@@ -241,7 +243,8 @@ def main():
             payload, seen = check(conn, chat, datetime.now(timezone.utc), seen)
         finally:
             conn.close()
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        STATE_PATH.parent.chmod(0o700)
         with tempfile.NamedTemporaryFile(mode="wb", dir=STATE_PATH.parent, delete=False) as out:
             temporary = Path(out.name)
             try:

@@ -9,7 +9,9 @@ The reader accepts only integer version 1. Missing or unsupported versions,
 malformed JSON and another chat's state produce an unavailable result without
 rewriting the file. A missing file means no previous results. This script owns
 future schema changes and migrations; there are no accepted older versions.
-Writes replace the file atomically. Only checked candidates still present in
+The private directory is mode `0700` and the state file is mode `0600`, including
+when replacing an existing record. Writes replace the file atomically.
+Only checked candidates still present in
 the live query are retained.
 
 The digest covers the pinned model, question and bounded evidence. Unchanged
@@ -21,8 +23,10 @@ never retried within a run, and never wake Claude. Diagnostics contain no
 provider body or message text.
 
 Evidence construction and its bounds live in `scripts/check-unanswered.py` —
-`evidence()` and the top-level constants. Incomplete evidence is never classified,
-cached or emitted. Deferred drops remain eligible on the next run. The fixed
+`evidence()` and the top-level constants. Capped evidence is classified with
+`complete: false`; Jev returns `cant_tell` when clipping prevents a reliable
+judgment. Valid Choices are cached and confirmed drops are emitted through the
+same path as complete evidence. Deferred drops remain eligible on the next run. The fixed
 Choice contract and owner issue citation live beside `QUESTION` in that script.
 
 This is a core per-group cadence, as required by the owner's
@@ -36,6 +40,9 @@ by `addColumnIfMissing`, and the `telegram_message_id` inline upgrade backfills
 inbound Telegram IDs. This reader requires message `id`, `chat_jid`,
 `sender_name`, `content`, `timestamp`, `is_from_me`, `is_bot_message`,
 `reply_to_message_id`, and `telegram_message_id`.
+It also reads the existing `reactions` table, initialized by `createSchema`,
+requiring `message_id`, `message_chat_jid`, and `reactor_jid`. A current-chat
+`bot@telegram` reaction excludes a candidate, as does a threaded bot reply.
 This uses script-delegation's precheck envelope and stateful-artifacts'
 read-only legacy runtime-table contract: it never initializes or upgrades the DB.
 Untrusted groups receive the host's current-chat filtered snapshot from

@@ -2,6 +2,7 @@
 name: check-unanswered
 description: Recover dropped requests in this chat. On the check-unanswered cadence wake, answer only the supplied unanswered messages. Use for check unanswered or find dropped messages; never scan or send to another chat.
 cadence: "*/5 * * * *"
+agentModel: "claude-sonnet-5-5"
 script: "scripts/check-unanswered.py"
 ---
 
@@ -18,13 +19,16 @@ For an explicit check, run:
 python3 /home/node/.claude/skills/tessl__check-unanswered/scripts/check-unanswered.py
 ```
 
+The named provider rule `rules/default-silence.md` — Scoped check-unanswered
+precheck contract — covers this native lookup and its input/output contract.
 The script uses the host's current `NANOCLAW_CHAT_JID` and native read-only
 `messages.db`. Selection logic lives in `scripts/check-unanswered.py` —
 `candidates()`. A confirmed drop yields `wake_agent: true`, with
 `data: {chat_jid, messages: [{id, sender_name, content, timestamp}]}`.
 The optional `data.truncated: true` means pending messages were omitted to fit
-the output bound; answer only the supplied messages. Incomplete evidence and
-unconfirmed drops stay silent with `wake_agent: false`.
+the output bound; answer only the supplied messages. Capped evidence is sent to
+Jev with `complete: false`; only a confirmed `unanswered` wakes Claude.
+Unconfirmed drops stay silent with `wake_agent: false`.
 On exit 1, inspect the diagnostic;
 do not answer from failed or missing data. Seen-state and host schema contracts
 are in [state-schema.md](state-schema.md).

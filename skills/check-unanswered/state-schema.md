@@ -6,7 +6,8 @@ per group (`jbaruch/nanoclaw`, `src/volume-mounts.ts`). The file is
 `{"schema_version": 1, "chat_jid": "<native chat>", "seen": {"<message id>": "<validated Choice>"}}`.
 The file is one versioned record; `seen` entries belong to that record.
 The reader accepts only integer version 1. Missing or unsupported versions,
-malformed JSON and another chat's state produce an unavailable result without
+malformed JSON, another chat's state and a `seen` value outside the Choice set
+produce an unavailable result without
 rewriting the file. A missing file means no previous results. This script owns
 future schema changes and migrations; there are no accepted older versions.
 The private directory is mode `0700` and the state file is mode `0600`, including
@@ -18,7 +19,9 @@ Each candidate gets one Jev Choice, recorded by message ID and never requested
 again while the candidate stays in the live query. Only a newly recorded
 `unanswered` wakes Claude, once. Invalid/unavailable Jev results are not recorded,
 never retried within a run, and never wake Claude. Diagnostics contain no
-provider body or message text.
+provider body or message text. A run starts new Jev requests only within
+`CLASSIFY_BUDGET_SECONDS`, so it ends inside the host's maintenance-container
+timeout; candidates it does not reach stay unrecorded for the next run.
 
 Evidence construction and its bounds live in `scripts/check-unanswered.py` —
 `evidence()` and the top-level constants. Capped evidence is classified with

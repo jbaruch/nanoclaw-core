@@ -354,6 +354,29 @@ def test_off_contract_jev_is_silent_uncached_and_not_retried(checker, monkeypatc
     assert "private conversation" not in diagnostic
 
 
+def test_jev_budget_defers_unseen_candidates_and_keeps_cached_results(checker, monkeypatch, capsys):
+    module, conn = checker
+    for mid in ("a", "b", "cached"):
+        message(conn, mid, content="private candidate text")
+    ask = stub(monkeypatch, module, ["cant_tell", "addressed_inline"])
+    default_budget = module.CLASSIFY_BUDGET_SECONDS
+    monkeypatch.setattr(module, "CLASSIFY_BUDGET_SECONDS", 0)
+
+    payload, seen = module.check(conn, CHAT, NOW, {"cached": "cant_tell"})
+
+    ask.assert_not_called()
+    assert payload == {"wake_agent": False, "data": {}}
+    assert seen == {"cached": "cant_tell"}
+    assert capsys.readouterr().err == (
+        "check-unanswered: Jev time budget reached; remaining candidates deferred to the next run\n"
+    )
+
+    monkeypatch.setattr(module, "CLASSIFY_BUDGET_SECONDS", default_budget)
+    module.check(conn, CHAT, NOW, seen)
+    assert ask.call_count == 2
+    assert [call.args[0]["candidate"]["id"] for call in ask.call_args_list] == ["a", "b"]
+
+
 def test_network_failure_retries_next_run_without_hiding_other_drops(checker, monkeypatch, capsys):
     module, conn = checker
     message(conn, "a")
@@ -493,4 +516,24 @@ def test_unaccepted_state_version_is_unavailable_before_classification(
     assert json.loads(captured.out)["wake_agent"] is False
     assert "seen-state JSON" in captured.err
     assert module.STATE_PATH.read_text() == original
+    ask.assert_not_called()
+
+
+@pytest.mark.parametrize("choice", ["bogus", None, 1, ["unanswered"], {"choice": "unanswered"}])
+def test_invalid_seen_choice_is_unavailable_before_classification(
+    checker, monkeypatch, capsys, choice
+):
+    module, conn = checker
+    message(conn)
+    saved = {"schema_version": 1, "chat_jid": CHAT, "seen": {"ask": choice}}
+    module.STATE_PATH.parent.mkdir()
+    original = json.dumps(saved).encode()
+    module.STATE_PATH.write_bytes(original)
+    ask = stub(monkeypatch, module, ["unanswered"])
+
+    assert module.main() == 1
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["wake_agent"] is False
+    assert "seen-state JSON" in captured.err
+    assert module.STATE_PATH.read_bytes() == original
     ask.assert_not_called()

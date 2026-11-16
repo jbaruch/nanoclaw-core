@@ -14,6 +14,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -50,6 +51,8 @@ QUESTION = {
 MAX_CONTEXT = 20
 MAX_STATE_BYTES = 16_384
 MAX_OUTPUT_BYTES = 25_000
+# The budget plus one 20 s request stays under the host's 300 s maintenance-container kill.
+CLASSIFY_BUDGET_SECONDS = 120
 
 
 def encoded(value):
@@ -153,6 +156,8 @@ def classify(state):
 
 
 def check(conn, chat, now, seen):
+    deadline = time.monotonic() + CLASSIFY_BUDGET_SECONDS
+    budget_reported = False
     drops, current = [], {}
     truncated = False
     for candidate in candidates(conn, chat, now):
@@ -161,6 +166,15 @@ def check(conn, chat, now, seen):
             current[candidate["id"]] = seen[candidate["id"]]
             continue
         if truncated:
+            continue
+        if time.monotonic() >= deadline:
+            if not budget_reported:
+                print(
+                    "check-unanswered: Jev time budget reached; "
+                    "remaining candidates deferred to the next run",
+                    file=sys.stderr,
+                )
+                budget_reported = True
             continue
         try:
             state = evidence(conn, chat, candidate)
@@ -218,6 +232,10 @@ def main():
                 or saved["schema_version"] != 1
                 or saved.get("chat_jid") != chat
                 or not isinstance(saved.get("seen"), dict)
+                or not all(
+                    isinstance(choice, str) and choice in QUESTION["criteria"]
+                    for choice in saved["seen"].values()
+                )
             ):
                 raise ValueError(
                     "Invalid seen-state; inspect /workspace/state/check-unanswered/seen.json"

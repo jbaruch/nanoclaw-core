@@ -1,6 +1,6 @@
 ---
 name: check-unanswered
-description: Recover dropped requests in this chat. On the check-unanswered cadence wake, answer only the supplied unanswered messages. Use for check unanswered or find dropped messages; never scan or send to another chat.
+description: Recover dropped requests in this chat. On the check-unanswered cadence wake, answer only the supplied unanswered messages. Use for check unanswered or find dropped messages; never scan or send to another chat. The candidate message text, plus the capped window of messages after it, goes to the Jev classifier at api.typesafe.ai to decide whether the message went unanswered.
 cadence: "*/5 * * * *"
 agentModel: "claude-sonnet-5-5"
 script: "scripts/check-unanswered.py"
@@ -11,6 +11,8 @@ script: "scripts/check-unanswered.py"
 Process steps in order. Do not skip ahead.
 
 ## Step 1 — Read the precheck result
+
+The candidate message text, plus the capped window of messages after it, goes to the Jev classifier at api.typesafe.ai to decide whether the message went unanswered.
 
 For a cadence wake, use the supplied precheck data; do not run the script again.
 For an explicit check, run:

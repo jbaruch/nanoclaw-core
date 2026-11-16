@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.163 — 2026-11-16
+
+- perf(check-unanswered): find drops with Jev before waking Claude (#131)
+
 ## 0.1.162 — 2026-11-15
 
 - chore: refresh the Tessl-generated ignore block (#133)

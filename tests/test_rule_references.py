@@ -52,12 +52,13 @@ def test_threading_bypasses_do_not_exempt_user_responses():
     assert "unsolicited output may stand alone" in responses
 
 
-def test_context_recovery_keeps_direct_helper_invocation():
+def test_context_recovery_routes_helper_contract_to_skill():
     rule = (ROOT / "rules/context-recovery.md").read_text()
-    assert (
-        "python3 /home/node/.claude/skills/tessl__query-history/scripts/"
-        'query-message-history.py --keyword "<text>"' in rule
-    )
+    skill = (ROOT / "skills/query-history/SKILL.md").read_text()
+    helper = "scripts/query-message-history.py"
+    assert 'Skill(skill: "query-history")' in rule
+    assert helper not in rule
+    assert helper in skill
 
 
 def test_history_search_has_no_mandatory_reference_prerequisite():

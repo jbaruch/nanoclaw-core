@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.164 — 2026-11-17
+
+- fix: address verifier findings (rules-core) (#130)
+
 ## 0.1.163 — 2026-11-16
 
 - perf(check-unanswered): find drops with Jev before waking Claude (#131)

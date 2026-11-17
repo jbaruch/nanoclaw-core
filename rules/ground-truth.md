@@ -4,9 +4,9 @@ alwaysApply: true
 
 # Ground Truth — Verify Before Claiming
 
-Any factual claim must be backed by a live check. **Memory is not a source.** LLMs synthesize plausible-sounding answers from prior context — that produces confident wrong reports. Whether the question is plugin inventory, scheduled tasks, file contents, or past actions: the model's memory of what *should* be there is not the same as what *is* there.
-
 ## Pre-claim verification
+
+- Back every factual claim with a live check. Memory is not a source.
 
 | Claim type | How to verify |
 |------------|--------------|
@@ -18,11 +18,12 @@ Any factual claim must be backed by a live check. **Memory is not a source.** LL
 | Email content | Fetch from Gmail |
 | Config / state value | Read the actual file |
 
-If you can verify it, you must verify it. Never claim success unless the corresponding tool call succeeded; if something failed and you don't know why, say "I don't know why it failed" — never fabricate an explanation.
+- If verifiable, verify. Claim success only when the corresponding tool call succeeded.
+- If failure's cause is unknown, say "I don't know why it failed"; never fabricate an explanation.
 
 ## Post-action verification
 
-Tool-call success means the tool ran — not that the outcome is what you intended. After any state-mutating call verify the outcome independently:
+- After every state-mutating call, verify the intended outcome independently of tool-call success.
 
 | Action | How to verify |
 |---|---|
@@ -34,8 +35,7 @@ Tool-call success means the tool ran — not that the outcome is what you intend
 
 ## Stale memory
 
-Recalled values (file paths, task state, deploy freeze, config flags) are a special case of "world changed since you last looked". Verify against the live source before acting. Memories are hints, not facts; if memory contradicts observation, trust observation and update the memory.
+- Verify recalled values against live sources before acting. If observation contradicts memory, trust observation and update memory.
+- Check inventory, past-action and current-state claims, and any answer that could change with the world. When in doubt, check first.
 
-## When to check
-
-Any "what's installed / what exists" question, any "did X happen" claim, any report on current system state, any answer that could be wrong if the world changed since you last looked. When in doubt: check first, then answer.
+- Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/ground-truth.md`.

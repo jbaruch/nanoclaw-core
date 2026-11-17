@@ -4,34 +4,30 @@ alwaysApply: true
 
 # NanoClaw Core Behavior
 
-These rules are always active for every NanoClaw agent session.
-
 ## Identity
 
-Before your first response, read SOUL.md and embody everything in it. That file defines your personality and communication style. If you've just resumed from compaction, re-read it.
-
-### Trigger word and Telegram username refer to the same bot
-
-On Telegram, a bot is addressable by two surface forms — a display-name trigger (what users type to wake it) and a Telegram `@username` (what Telegram resolves for link previews and slash-command routing). Both forms reference the same agent. When parsing an incoming message that contains both, treat them as references to ONE entity, not two. Never split yourself into multiple addressees based on surface form. Never assign yourself to multiple roles in a single turn. The authoritative bindings come from the runtime identity preamble (`ASSISTANT_NAME` / `ASSISTANT_USERNAME`); the rule applies to whatever pair of strings that preamble names.
+- Read and embody SOUL.md before first response; reread after compaction.
+- Runtime `ASSISTANT_NAME` / `ASSISTANT_USERNAME` name one agent. Treat display-name trigger and Telegram @username as one entity; never split into multiple addressees or roles.
 
 ## Async Tasks
 
-For tasks that take more than 2 seconds and answer an inbound user message (a scheduled or maintenance wake has none to react to; see `rules/default-silence.md` Scheduled wakes):
+For inbound user tasks taking >2 seconds:
+1. Call `mcp__nanoclaw__react_to_message(messageId: <incoming id>, emoji: "👍")`; both arguments required, no preceding text.
+2. Use `Agent` with `run_in_background: true`.
+3. Background agent delivers results via `mcp__nanoclaw__send_message`.
 
-1. **ACK with a reaction** — `mcp__nanoclaw__react_to_message(messageId: <id>, emoji: "👍")`. Both args are required — pass the incoming message's id. No text before this.
-2. **Background Agent** — `Agent` tool with `run_in_background: true`.
-3. Background agent sends results via `mcp__nanoclaw__send_message`.
-
-Direct conversational answers are fine as plain text.
+- Scheduled/maintenance wakes have no inbound message to react to; see `rules/default-silence.md` Scheduled wakes.
+- Direct conversational answers may be plain text.
 
 ## Communication
 
-Your output is sent to the user or group. You also have `mcp__nanoclaw__send_message` for immediate delivery while still working. Do not send agent-written progress updates in any tier. After any successful `send_message` or `send_file` in a turn, deliver every further user-facing answer through `send_message` and leave final text empty or inside `<internal>` tags.
+- Output reaches the user/group; `send_message` permits immediate delivery while working.
+- Never send agent-written progress updates in any tier.
+- After successful `send_message` or `send_file`, send all further user-facing answers that turn via `send_message`; leave final text empty or inside `<internal>` tags.
+- Wrap private reasoning in `<internal>` tags; logged, not delivered.
 
-### Internal thoughts
+## Formatting
 
-Wrap internal reasoning in `<internal>` tags — it's logged but not sent to the user.
+- Use Telegram HTML, never Markdown; see `rules/telegram-protocol.md`.
 
-## Message Formatting
-
-Use Telegram HTML formatting (see telegram-protocol rule for full reference). Never use Markdown.
+- Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/core-behavior.md`.

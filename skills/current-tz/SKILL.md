@@ -7,7 +7,7 @@ description: Read the operator's current IANA timezone from the host-owned `tz_s
 
 Process steps in order. Do not skip ahead.
 
-This skill is the single shared reader for the operator's current zone. Call it; do not copy `skills/current-tz/scripts/read-current-tz.py` into another plugin.
+This skill is the single shared reader for the operator's current zone.
 
 ## Step 1 — Read the operator's current zone
 
@@ -15,12 +15,9 @@ This skill is the single shared reader for the operator's current zone. Call it;
 python3 /home/node/.claude/skills/tessl__current-tz/scripts/read-current-tz.py
 ```
 
-Stdout is one line of JSON:
+Stdout follows the Scoped current-zone script contract in `rules/temporal-awareness.md`; `local_now` is ISO-8601 with offset, `local_date` is `YYYY-MM-DD` and the diagnostic is on stderr.
 
-- `{"available": true, "tz": "<iana>", "local_now": "<ISO-8601 with offset>", "local_date": "YYYY-MM-DD"}` — the zone the host resolved for the operator's current position, with the current instant already expressed in it
-- `{"available": false, "tz": null, "local_now": null, "local_date": null}` — no usable zone: no `tz_state` row, an empty `current_tz`, a `schema_version` this reader does not accept, or an unparseable zone name. The diagnostic is on stderr.
-
-Exit codes: `0` — the store was read and `available` is the answer. `1` — the store could not be read (missing file, no `tz_state` table, corruption, permission); stdout still carries the unavailable shape. `2` — CLI misuse. `--now <ISO-8601 instant with offset>` pins the instant the local fields derive from; omit it in production. The script never guesses: `home_tz` is not a fallback. Proceed immediately to Step 2.
+Exit codes: `0` — the store was read and `available` is the answer. `1` — the store could not be read (missing file, no `tz_state` table, corruption, permission); stdout still carries the unavailable shape. `2` — CLI misuse. The script never guesses: `home_tz` is not a fallback. Proceed immediately to Step 2.
 
 ## Step 2 — Act on the result
 
@@ -31,5 +28,11 @@ Exit codes: `0` — the store was read and `available` is the answer. `1` — th
 - Exit `1`, scheduling caller → treat it as a hard failure and surface the stderr diagnostic.
 - Exit `1`, phrasing surface → degrade as for `available: false`.
 - Never read `home_tz` as a stand-in for where the operator is.
+
+For proactive timing examples or contract background, read this reference, relative to this skill:
+
+```text
+references/temporal-awareness.md
+```
 
 Finish here.

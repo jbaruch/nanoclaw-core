@@ -40,6 +40,25 @@ def test_size_trim_preserves_reaction_upgrade_restriction():
     assert "only to upgrade" in rule
 
 
+def test_harness_nudge_is_a_scoped_internal_only_narration_exception():
+    rule = (ROOT / "rules/default-silence.md").read_text()
+    scheduled = rule.split("## Scheduled wakes\n", 1)[1].split("\n## ", 1)[0]
+    assert "- Narrow exception for the harness nudge.\n" in scheduled
+    exception = scheduled.split("- Narrow exception for the harness nudge.\n", 1)[1]
+    preconditions, reset = exception.split("\n- ", 1)
+    scope, response, delivery = preconditions.splitlines()
+    assert scope.startswith("  1. ")
+    assert "The user hasn't heard from you in a while" in scope
+    assert "say in a few words what you're doing” is not a user message" in scope
+    assert response == "  2. Use one `<internal>` line; keep working."
+    assert delivery == "  3. No plain text, `send_message` or reactions in any session or chat."
+    assert reset.startswith(
+        "In every other case, never narrate work or decisions not to respond, "
+        "in any language or notation."
+    )
+    assert "- Never narrate work or decisions not to respond" not in rule
+
+
 def test_threading_bypasses_do_not_exempt_user_responses():
     rule = (ROOT / "rules/telegram-protocol.md").read_text()
     threading = rule.split("## Reply threading\n", 1)[1].split("\n## ", 1)[0]

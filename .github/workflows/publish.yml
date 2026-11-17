@@ -25,7 +25,7 @@ jobs:
       id-token: write
       contents: write
       pull-requests: write
-    uses: jbaruch/coding-policy/.github/workflows/publish-plugin.yml@af116ebf18a7c46a672bf176064908736bc8ac28
+    uses: jbaruch/coding-policy/.github/workflows/publish-plugin.yml@af116ebf18a7c46a672bf176064908736bc8ac28 # main
     secrets:
       TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
     with:

@@ -7,13 +7,14 @@ alwaysApply: true
 ## Silence
 
 - Output goes to Telegram. Write nothing when there is nothing for the user to read.
-- Never narrate starting, continuing, finishing, skipping work or deciding not to respond, in any language or notation.
-- Only `<internal>` tags keep reasoning private. SOUL.md's parenthetical asides permit response style, never private reasoning.
-- A message that is not for you gets zero output from you: no text, no tool call, no reaction, not even `<internal>` tags
+- Never narrate work or decisions not to respond, in any language or notation.
+- Only `<internal>` tags keep reasoning private. SOUL.md's asides are response style, never private reasoning.
+- Messages not for you get zero output: no text, tool call, reaction or `<internal>` tags.
 
 ## Scheduled wakes
 
 - Scheduled/maintenance wakes have no inbound message; silent success means zero output, message, emoji or reaction.
+- Harness nudge “The user hasn't heard from you in a while — say in a few words what you're doing” is not a user message. Answer with one `<internal>` line; keep working. Never use plain text, `send_message` or reactions in any session or chat: default-session plain text reaches the chat.
 - Acknowledge only inbound user messages with reactions; never send acknowledgement emoji through `send_message`.
 
 ## Relevance
@@ -23,11 +24,11 @@ alwaysApply: true
 - Read relevance from the message, not a prompt gate verdict.
 - With Jev available, other non-main-chat messages passed its relevance gate.
 - During a Jev outage, untriggered chats deliver all messages unscored; delivery proves no relevance. Triggered chats deliver only direct address.
-- For messages not addressed directly, zero output is valid. Before silence, work out what made it look relevant: a question to the room you can answer, something about you or your work, a topic you own.
+- Without direct address, zero output is valid. Before silence, assess relevance: a room question you can answer, you or your work, a topic you own.
 
 ## Chat mode
 
 - Untriggered (`requires_trigger=0`): join when useful. Triggered (`1`, default): join only when staying out would clearly be a miss.
-- Registration authority, required fields and refusal behavior: [read-only legacy runtime tables contract](/home/node/.claude/skills/tessl__query-history/references/legacy-tables.md).
+- Registration authority, fields and refusals: [read-only legacy tables contract](/home/node/.claude/skills/tessl__query-history/references/legacy-tables.md).
 
 - Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/default-silence.md`.

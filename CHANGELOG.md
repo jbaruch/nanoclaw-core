@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.166 — 2026-11-17
+
+- fix(query-history): refuse on missing legacy tables (#138)
+
 ## 0.1.165 — 2026-11-17
 
 - docs(check-unanswered): say messages go to the Jev classifier (#137)

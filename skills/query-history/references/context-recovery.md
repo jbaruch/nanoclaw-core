@@ -4,14 +4,8 @@ The helper's installed-container path follows the standard `tessl__<name>`
 mount convention. In a checkout, the script is
 `skills/query-history/scripts/query-message-history.py`.
 
-## Schema (quick reference)
-
-```sql
-messages(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message)
-chats(jid, name, last_message_time, channel, is_group)
-```
-
-`is_from_me = 1` is the bot's own messages. `sender` is the stable numeric user ID; `sender_name` is `Display (@username)` — a username fragment matches via `--sender`. Critical after a session nuke: the DB remembers who said what when you don't.
+For the host schema owner, required fields and refusal behavior, see the
+[read-only legacy runtime tables contract](legacy-tables.md).
 
 ## Compaction incident
 

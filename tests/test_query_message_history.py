@@ -307,6 +307,40 @@ def test_db_missing_returns_canonical_error(query_message_history, monkeypatch, 
     assert payload["error"].startswith("DB access failed")
 
 
+@pytest.mark.parametrize(
+    "missing", [None, "id", "chat_jid", "sender_name", "content", "timestamp", "is_from_me"]
+)
+@pytest.mark.parametrize("filter_flag", ["--keyword", "--sender"])
+def test_missing_required_schema_refuses_without_writing(
+    query_message_history, monkeypatch, tmp_path, missing, filter_flag
+):
+    db_path = tmp_path / "db.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        if missing is not None:
+            columns = ["id", "chat_jid", "sender_name", "content", "timestamp", "is_from_me"]
+            conn.execute(
+                "CREATE TABLE messages ("
+                + ", ".join(f"{column} TEXT" for column in columns if column != missing)
+                + ")"
+            )
+    before = db_path.read_bytes()
+
+    rc, payload, stderr = _run(
+        query_message_history, [filter_flag, "x"], monkeypatch, db_path=str(db_path)
+    )
+
+    assert rc == 1
+    expected_error = "no such table: messages" if missing is None else f"no such column: {missing}"
+    assert expected_error in stderr
+    assert "Check NANOCLAW_DB and the host DB mount" in stderr
+    assert "src/db.ts:createSchema" in stderr
+    assert "legacy-tables.md" in stderr
+    payload = _require_payload(payload)
+    assert payload["rows"] == []
+    assert payload["error"] == stderr.strip()
+    assert db_path.read_bytes() == before
+
+
 def test_payload_shape_is_canonical_on_success(query_message_history, monkeypatch, tmp_path):
     db_path = str(tmp_path / "db.sqlite")
     _populate_db(db_path)

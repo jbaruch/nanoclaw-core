@@ -2,6 +2,9 @@
 """
 Query messages.db for the current chat by keyword and/or sender.
 
+Read-only host table contract: ../references/legacy-tables.md (relative to
+this script's directory). The host owns schema initialization and upgrades.
+
 Invoked from `rules/context-recovery.md` when the agent is about to
 claim lost context. Replaces the inlined Python snippet that lived in
 the rule body — extraction tracked in jbaruch/nanoclaw-admin#181 (umbrella
@@ -309,7 +312,11 @@ def main(argv: Optional[list] = None) -> int:
             for r in cursor.fetchall()
         ]
     except sqlite3.Error as e:
-        err = f"DB access failed: {e}"
+        err = (
+            f"DB access failed: {e}. Check NANOCLAW_DB and the host DB mount; "
+            "ask jbaruch/nanoclaw's src/db.ts:createSchema owner to restore "
+            "the required schema (see ../references/legacy-tables.md)."
+        )
         sys.stderr.write(err + "\n")
         print(
             json.dumps(

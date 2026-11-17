@@ -28,6 +28,6 @@ alwaysApply: true
 ## Chat mode
 
 - Untriggered (`requires_trigger=0`): join when useful. Triggered (`1`, default): join only when staying out would clearly be a miss.
-- Authority: `registered_groups` in shared `messages.db`; `/workspace/ipc/available_groups.json` is derivative and incomplete.
+- Registration authority, required fields and refusal behavior: [read-only legacy runtime tables contract](/home/node/.claude/skills/tessl__query-history/references/legacy-tables.md).
 
 - Detail: `/home/node/.claude/skills/tessl__core-rule-details/references/default-silence.md`.

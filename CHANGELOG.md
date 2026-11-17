@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.167 — 2026-11-17
+
+- chore(deps): bump ruff from 0.17.3 to 0.17.5 (#128)
+
 ## 0.1.166 — 2026-11-17
 
 - fix(query-history): refuse on missing legacy tables (#138)

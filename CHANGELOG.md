@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.169 — 2026-11-17
+
+- fix(default-silence): answer the harness nudge in one line (#142)
+
 ## 0.1.168 — 2026-11-17
 
 - chore(deps): make Renovate the only dependency scanner (#140)

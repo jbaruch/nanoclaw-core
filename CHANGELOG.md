@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.165 — 2026-11-17
+
+- docs(check-unanswered): say messages go to the Jev classifier (#137)
+
 ## 0.1.164 — 2026-11-17
 
 - fix: address verifier findings (rules-core) (#130)

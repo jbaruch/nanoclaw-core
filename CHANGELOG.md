@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.170 — 2026-11-18
+
+- chore(renovate): drop the major update approval gate (#143)
+
 ## 0.1.169 — 2026-11-17
 
 - fix(default-silence): answer the harness nudge in one line (#142)

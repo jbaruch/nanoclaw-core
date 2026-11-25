@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.171 — 2026-11-25
+
+- fix(policy): delegate partial judgments for clipped Sent intake (#145)
+
 ## 0.1.170 — 2026-11-18
 
 - chore(renovate): drop the major update approval gate (#143)

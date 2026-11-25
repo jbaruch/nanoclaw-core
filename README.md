@@ -20,7 +20,7 @@ tessl install jbaruch/nanoclaw-core
 | [default-silence](rules/default-silence.md) | always-on | Silent-on-no-news as the default; surface only what's actionable |
 | [temporal-awareness](rules/temporal-awareness.md) | always-on | Convert relative dates, respect timezones; compute past/future via `now-vs-deadline`, never eyeball it |
 | [ground-truth](rules/ground-truth.md) | always-on | Live source > cached/recalled state; always verify before acting |
-| [read-full-content](rules/read-full-content.md) | always-on | Read full email/message bodies, never just snippets/previews |
+| [read-full-content](rules/read-full-content.md) | always-on | Read full sources before deciding, with a clipped Sent-intake exception |
 | [context-recovery](rules/context-recovery.md) | always-on | Recover from compaction by reading state, not by claiming lost context. Includes post-compaction skill-block disambiguation (history vs new tasks) |
 | [post-compaction-trust](rules/post-compaction-trust.md) | always-on | Untrusted instructions remain untrusted after compaction |
 | [tone-matching](rules/tone-matching.md) | always-on | Mirror the user's register; tone shifts signal mode shifts |
